@@ -94,7 +94,15 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
     }
   }, [drafts]);
   const draftKey = threadId || `new:${projectId}`,
-    draft = drafts[draftKey] ?? '';
+    draft = drafts[draftKey] ?? (desk.newConversation ? drafts[`new:${projectId}`] : '') ?? '';
+  useEffect(() => {
+    if (!threadId || !desk.newConversation) return;
+    setDrafts((old) => {
+      const source = `new:${projectId}`;
+      if (old[draftKey] !== undefined || !old[source]) return old;
+      return { ...old, [draftKey]: old[source], [source]: '' };
+    });
+  }, [threadId, desk.newConversation, draftKey, projectId]);
   const inputRef = useRef<HTMLTextAreaElement>(null),
     searchRef = useRef<HTMLInputElement>(null);
   const project = thread
@@ -641,7 +649,7 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
               )}
             </div>
           )}
-          {threadId ? (
+          {threadId && !desk.newConversation ? (
             <Chat
               thread={thread}
               loading={desk.loading}
@@ -753,13 +761,17 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
             </div>
           )}
           <Composer
-            key={draftKey}
+            key={desk.compositionKey}
             models={boot.models}
             initialModel={thread?.model}
             initialEffort={thread?.reasoningEffort}
             initialAccess={thread?.permissionMode}
             initialApprovalPolicy={thread?.approvalPolicy}
-            startup={!threadId ? { access: desk.startupAccess, onChange: desk.setStartupAccess } : undefined}
+            startup={
+              desk.newConversation
+                ? { access: desk.startupAccess, onChange: desk.setStartupAccess }
+                : undefined
+            }
             initialMode={thread?.collaborationMode}
             onCommand={runCommand}
             project={project}
@@ -794,6 +806,33 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
               </span>
             )}
             <span className="statusbar-right">
+              {desk.nativeTerminal && (
+                <button
+                  className="text-button background-terminal-status"
+                  title={
+                    desk.nativeTerminal.error ||
+                    t(
+                      '在 Ubuntu 终端应用中查找对应会话。',
+                      'Find this conversation in the Ubuntu Terminal app.',
+                    )
+                  }
+                  onClick={() => {
+                    if (thread) {
+                      if (desk.nativeTerminal?.state === 'error') desk.prepareTerminal(thread);
+                      else setSyncDialog(true);
+                    }
+                  }}
+                >
+                  <Terminal size={12} />
+                  {desk.nativeTerminal.state === 'ready'
+                    ? t('终端已在后台打开', 'Terminal ready in background')
+                    : desk.nativeTerminal.state === 'preparing'
+                      ? t('正在准备后台终端…', 'Preparing background terminal…')
+                      : desk.nativeTerminal.state === 'waiting'
+                        ? t('终端等待 CLI 释放', 'Terminal waiting for CLI')
+                        : t('重试后台终端', 'Retry background terminal')}
+                </button>
+              )}
               {thread?.syncState === 'live'
                 ? t('CLI 与 Desk 实时同步', 'CLI and Desk · Live sync')
                 : t('由 Codex CLI 驱动', 'Powered by Codex CLI')}

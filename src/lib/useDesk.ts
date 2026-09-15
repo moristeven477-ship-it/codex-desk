@@ -16,6 +16,7 @@ import { reduceThread } from './events';
 import { isWriterConflict } from '../shared/errors';
 import { APP_VERSION } from '../shared/version';
 import { CompletionTracker, type CompletionNotice } from '../shared/completion';
+import { threadPermissions } from '../shared/permissions';
 
 export async function request<T = unknown>(method: string, params?: JsonObject): Promise<T> {
   if (!window.codexDesk) throw new Error('Open Codex Desk using the desktop application.');
@@ -49,7 +50,17 @@ export function useDesk() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [projectId, setProjectId] = useState('');
   const [threadId, setThreadId] = useState('');
-  const [startupAccess, setStartupAccess] = useState<AccessMode>();
+  const [startupAccess, setStartupSelection] = useState<AccessMode>();
+  const startupSelection = useRef(startupAccess);
+  startupSelection.current = startupAccess;
+  const modeRevision = useRef(0);
+  const modeUpdate = useRef<Promise<unknown>>(Promise.resolve());
+  const [newConversation, setNewConversation] = useState(true);
+  const [compositionKey, setCompositionKey] = useState('initial');
+  const [newRevision, setNewRevision] = useState(0);
+  const [nativeTerminals, setNativeTerminals] = useState<
+    Record<string, { state: 'preparing' | 'ready' | 'waiting' | 'error'; error?: string }>
+  >({});
   const [cache, setCache] = useState<Record<string, Thread>>({});
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [error, setError] = useState('');
@@ -66,6 +77,19 @@ export function useDesk() {
   const selectionGeneration = useRef(0);
   const sendingRef = useRef(false);
   const fail = useCallback((e: unknown) => setError(e instanceof Error ? e.message : String(e)), []);
+  const prepareTerminal = useCallback((thread: Thread) => {
+    if (thread.syncState === 'external') {
+      setNativeTerminals((old) => ({ ...old, [thread.id]: { state: 'waiting' } }));
+      return;
+    }
+    setNativeTerminals((old) => ({ ...old, [thread.id]: { state: 'preparing' } }));
+    void window.codexDesk
+      ?.prepareTerminal(thread.id)
+      .then((status) => setNativeTerminals((old) => ({ ...old, [thread.id]: status })))
+      .catch((error) =>
+        setNativeTerminals((old) => ({ ...old, [thread.id]: { state: 'error', error: String(error) } })),
+      );
+  }, []);
 
   const refresh = useCallback(
     async (append = false, nextCursor?: string | null) => {
@@ -96,7 +120,13 @@ export function useDesk() {
     async (id: string, background = false) => {
       const generation = background ? selectionGeneration.current : ++selectionGeneration.current;
       if (!background) {
+        setStartupSelection(undefined);
+        ++modeRevision.current;
+        modeUpdate.current = Promise.resolve();
+        current.current.threadId = id;
         setThreadId(id);
+        setNewConversation(false);
+        setCompositionKey(id);
         setLoading(true);
       }
       const buffered: CodexEvent[] = [];
@@ -114,6 +144,9 @@ export function useDesk() {
         const hydrated = buffered.reduce(reduceThread, thread);
         if (generation !== selectionGeneration.current) return;
         setCache((old) => ({ ...old, [id]: hydrated }));
+        if (!background) setNewConversation(!hydrated.turns.length);
+        if (!current.current.archived && (!background || thread.syncState === 'live'))
+          prepareTerminal(thread);
         if (!background) {
           setError('');
           void request('settings.update', { lastThreadId: id }).catch(fail);
@@ -125,7 +158,7 @@ export function useDesk() {
         if (!background && generation === selectionGeneration.current) setLoading(false);
       }
     },
-    [fail],
+    [fail, prepareTerminal],
   );
 
   useEffect(() => {
@@ -163,6 +196,13 @@ export function useDesk() {
       const p = event.params ?? {};
       const id = p.threadId as string;
       if (id) {
+        if (
+          event.method === 'thread/settings/updated' &&
+          id === current.current.threadId &&
+          startupSelection.current &&
+          threadPermissions(p.threadSettings as JsonObject).permissionMode !== startupSelection.current
+        )
+          setStartupSelection(undefined);
         pendingEvents.current.get(id)?.push(event);
         setCache((old) => (old[id] ? { ...old, [id]: reduceThread(old[id], event) } : old));
         if (event.method === 'thread/tokenUsage/updated') {
@@ -259,8 +299,15 @@ export function useDesk() {
   }, [refresh]);
 
   function selectProject(id: string) {
-    setStartupAccess(undefined);
+    setStartupSelection(undefined);
+    ++modeRevision.current;
+    modeUpdate.current = Promise.resolve();
     ++selectionGeneration.current;
+    current.current.threadId = '';
+    current.current.projectId = id;
+    setNewConversation(true);
+    setCompositionKey(crypto.randomUUID());
+    setNewRevision((old) => old + 1);
     setProjectId(id);
     setThreadId('');
     setLoading(false);
@@ -293,29 +340,22 @@ export function useDesk() {
       fail(e);
     }
   }
-  const creating = useRef<Promise<string> | null>(null);
-  async function ensureThread(
-    model?: string,
-    access: AccessMode | undefined = startupAccess,
-  ): Promise<string> {
+  const creating = useRef<{ generation: number; promise: Promise<string> } | null>(null);
+  async function ensureThread(model?: string): Promise<string> {
     if (current.current.threadId) return current.current.threadId;
-    if (creating.current) return creating.current;
+    const generation = selectionGeneration.current;
+    if (creating.current?.generation === generation) return creating.current.promise;
     const operation = (async () => {
       const selectedProject = current.current.projectId;
       const thread = await request<Thread>('thread.create', {
         ...(selectedProject ? { projectId: selectedProject } : {}),
         ...(model ? { model } : {}),
-        access,
       });
-      if (!selectedProject) {
-        const data = await request<Bootstrap>('bootstrap');
-        setBoot(data);
-        const defaultProject = data.projects.find((p) => p.path === thread.cwd);
-        if (defaultProject) {
-          setProjectId(defaultProject.id);
-          await request('settings.update', { lastProjectId: defaultProject.id });
-        }
-      }
+      prepareTerminal(thread);
+      // A slow creation must never replace a newer user selection or send to it.
+      if (generation !== selectionGeneration.current) throw new Error('Conversation selection changed.');
+      if (!selectedProject) setBoot(await request<Bootstrap>('bootstrap'));
+      if (generation !== selectionGeneration.current) throw new Error('Conversation selection changed.');
       current.current.threadId = thread.id;
       setThreadId(thread.id);
       setCache((old) => ({ ...old, [thread.id]: thread }));
@@ -323,12 +363,42 @@ export function useDesk() {
       await request('settings.update', { lastThreadId: thread.id });
       return thread.id;
     })();
-    creating.current = operation;
+    creating.current = { generation, promise: operation };
     try {
       return await operation;
     } finally {
-      creating.current = null;
+      if (creating.current?.promise === operation) creating.current = null;
     }
+  }
+  // A real, empty conversation exists before the first message so its terminal
+  // can open immediately. Startup controls stay visible until its first turn.
+  useEffect(() => {
+    if (boot.connection.phase !== 'ready' || threadId || archived || !newConversation) return;
+    const generation = selectionGeneration.current;
+    void ensureThread().catch((error) => {
+      if (generation === selectionGeneration.current) fail(error);
+    });
+  }, [boot.connection.phase, threadId, archived, newRevision]);
+  function setStartupAccess(value: AccessMode | undefined) {
+    setStartupSelection(value);
+    const revision = ++modeRevision.current;
+    if (!value) {
+      modeUpdate.current = modeUpdate.current.catch(() => {});
+      return;
+    }
+    const target = ensureThread();
+    void target.catch(() => {});
+    const operation = modeUpdate.current
+      .catch(() => {})
+      .then(async () => {
+        const id = await target;
+        if (revision !== modeRevision.current) return;
+        await request('thread.configure', { threadId: id, access: value });
+      });
+    modeUpdate.current = operation;
+    void operation.catch((error) => {
+      if (revision === modeRevision.current) fail(error);
+    });
   }
   async function setGoal(patch: {
     objective?: string;
@@ -336,6 +406,7 @@ export function useDesk() {
     tokenBudget?: number | null;
   }) {
     const id = await ensureThread();
+    await modeUpdate.current;
     const { goal } = await request<{ goal: ThreadGoal }>('goal.set', { threadId: id, ...patch });
     setCache((old) => ({ ...old, [id]: { ...old[id], goal } }));
   }
@@ -357,7 +428,8 @@ export function useDesk() {
     setSending(true);
     setError('');
     try {
-      const id = await ensureThread(model, access);
+      const id = await ensureThread(model);
+      await modeUpdate.current;
       const { turn } = await request<{ turn: Turn }>('turn.start', {
         threadId: id,
         text,
@@ -419,6 +491,10 @@ export function useDesk() {
     const thread = await request<Thread>('thread.fork', { threadId: id });
     setCache((old) => ({ ...old, [thread.id]: thread }));
     setThreadId(thread.id);
+    current.current.threadId = thread.id;
+    setNewConversation(false);
+    setCompositionKey(thread.id);
+    prepareTerminal(thread);
     await request('settings.update', { lastThreadId: thread.id });
     void refresh();
   }
@@ -442,6 +518,10 @@ export function useDesk() {
     }));
   }
   return {
+    newConversation: newConversation && !cache[threadId]?.turns.length,
+    compositionKey,
+    nativeTerminal: nativeTerminals[threadId],
+    prepareTerminal,
     completion,
     dismissCompletion,
     startupAccess,
@@ -480,8 +560,14 @@ export function useDesk() {
     fork,
     older,
     newThread: () => {
-      setStartupAccess(undefined);
+      setStartupSelection(undefined);
+      ++modeRevision.current;
+      modeUpdate.current = Promise.resolve();
       ++selectionGeneration.current;
+      current.current.threadId = '';
+      setNewConversation(true);
+      setCompositionKey(crypto.randomUUID());
+      setNewRevision((old) => old + 1);
       setThreadId('');
       setLoading(false);
       setArchived(false);

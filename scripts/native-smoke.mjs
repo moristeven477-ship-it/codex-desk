@@ -46,6 +46,24 @@ try {
   page.on('pageerror', (error) => errors.push(error.message));
   await expect(page.getByText('Codex connected', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'What shall we build today?' })).toBeVisible();
+  await expect(page.locator('.background-terminal-status')).toContainText('Terminal ready in background', {
+    timeout: 20_000,
+  });
+  const nativeState = JSON.parse(
+    await readFile(path.join(directory, 'terminals/native-terminals.json'), 'utf8'),
+  );
+  expect(Object.keys(nativeState)).toHaveLength(1);
+  const firstMarkerFile = (await readdir(path.join(directory, 'terminals'))).find((name) =>
+    /^terminal-.*\.json$/.test(name),
+  );
+  const firstMarker = JSON.parse(await readFile(path.join(directory, 'terminals', firstMarkerFile), 'utf8'));
+  await page.evaluate(async () => {
+    const boot = await window.codexDesk.request('bootstrap');
+    await window.codexDesk.prepareTerminal(boot.settings.lastThreadId);
+  });
+  expect(JSON.parse(await readFile(path.join(directory, 'terminals', firstMarkerFile), 'utf8')).pid).toBe(
+    firstMarker.pid,
+  );
   const preferences = await desktop.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences(),
   );
@@ -168,6 +186,7 @@ try {
       native: 'passed',
       transport: 'Electron IPC + shared Unix WebSocket',
       embeddedCliPty: 'passed',
+      backgroundTerminal: 'native GNOME tab, same PID reused',
       goals: 'passed',
       images: 'paste, validated IPC, private PNG, localImage send, failed batch cleanup',
       clipboard:
@@ -189,6 +208,21 @@ try {
   throw error;
 } finally {
   if (desktop) await desktop.close();
+  // Only terminate synthetic CLI processes recorded in this test's private data.
+  for (const name of await readdir(path.join(directory, 'terminals')).catch(() => [])) {
+    if (!/^terminal-.*\.json$/.test(name)) continue;
+    const marker = JSON.parse(await readFile(path.join(directory, 'terminals', name), 'utf8'));
+    const processStat = await readFile(`/proc/${marker.pid}/stat`, 'utf8').catch(() => '');
+    if (
+      processStat
+        .slice(processStat.lastIndexOf(')') + 1)
+        .trim()
+        .split(/\s+/)[19] === marker.start
+    ) {
+      console.log(JSON.stringify({ backgroundCliSurvivedDeskClose: true }));
+      process.kill(marker.pid, 'SIGTERM');
+    }
+  }
   await shared.close();
   await rm(directory, { recursive: true, force: true });
 }

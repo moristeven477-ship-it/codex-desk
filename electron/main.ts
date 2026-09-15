@@ -6,6 +6,7 @@ import { DeskService } from './service';
 import { openTerminal, type TerminalCommand } from './terminal';
 import { importImages } from './images';
 import { CompletionTracker } from '../src/shared/completion';
+import { BackgroundTerminal } from './background-terminal';
 
 let window: BrowserWindow | null = null;
 let service: DeskService;
@@ -51,6 +52,7 @@ else {
     .whenReady()
     .then(async () => {
       service = new DeskService(app.getPath('userData'));
+      const backgroundTerminal = new BackgroundTerminal(path.join(app.getPath('userData'), 'terminals'));
       await service.init();
       // Permit headless integration tests to select a fake CLI without touching user preferences.
       if (!app.isPackaged && process.env.CODEX_DESK_TEST_BINARY)
@@ -125,6 +127,34 @@ else {
         trusted(event);
         const command = (await service.handle('thread.terminalCommand', { threadId })) as TerminalCommand;
         await openTerminal(command);
+      });
+      ipcMain.handle('desk:prepare-terminal', async (event, threadId: unknown) => {
+        trusted(event);
+        // Resolve IDs and CLI arguments in the main process. Never accept shell text.
+        const thread = (await service.handle('thread.open', {
+          threadId,
+        })) as import('../src/shared/types').Thread;
+        if (thread.syncState === 'external') return { state: 'waiting' };
+        const command = (await service.handle('thread.terminalCommand', { threadId })) as TerminalCommand;
+        const title =
+          'Codex Desk · ' +
+          (thread.name || thread.preview || t('新会话', 'New conversation'))
+            .replace(/[\x00-\x1f\x7f]/g, ' ')
+            .slice(0, 80) +
+          ' · ' +
+          thread.id.slice(-8);
+        try {
+          await backgroundTerminal.prepare(thread.id, title, command);
+          return { state: 'ready' };
+        } catch {
+          return {
+            state: 'error',
+            error: t(
+              '无法后台打开 Ubuntu 终端。请确认已安装 gnome-terminal 和 python3-gi。',
+              'Could not prepare Ubuntu Terminal. Check that gnome-terminal and python3-gi are installed.',
+            ),
+          };
+        }
       });
       ipcMain.handle('desk:pick-directory', async (event) => {
         trusted(event);

@@ -28,6 +28,7 @@ _Screenshots show a synthetic test workspace. The application uses your real loc
 - Switch between English / 简体中文 and dark / light themes.
 - Start immediately in a default workspace, with drafts saved across restarts.
 - Share one conversation with the real CLI: messages, approvals, settings, and goals use the same local app-server.
+- Automatically prepare a background **Ubuntu Terminal** tab for each conversation you create or select. Reopening the conversation reuses its terminal.
 - Open the complete `/` command menu, graphical goal / plan / status controls, and an embedded real Codex terminal.
 - Use detailed model / effort / permission popovers and an original gradient SVG neon sakura icon.
 
@@ -51,7 +52,7 @@ If Codex already works in your terminal, keep that installation. Codex Desk disc
 Download the `.deb` from [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest), then run:
 
 ```bash
-sudo apt install ./codex-desk-0.2.1-amd64.deb
+sudo apt install ./codex-desk-0.2.2-amd64.deb
 ```
 
 Launch **Codex Desk** from Ubuntu's application menu, or run `codex-desk`.
@@ -61,14 +62,14 @@ The package includes the Electron runtime; Node.js is needed separately only for
 ### Portable AppImage
 
 ```bash
-chmod +x codex-desk-0.2.1-x86_64.AppImage
-./codex-desk-0.2.1-x86_64.AppImage
+chmod +x codex-desk-0.2.2-x86_64.AppImage
+./codex-desk-0.2.2-x86_64.AppImage
 ```
 
 If FUSE is unavailable, run without mounting the AppImage:
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.1-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.2-x86_64.AppImage
 ```
 
 The `.deb` is recommended on Ubuntu 24.04: its installer includes Electron's Ubuntu AppArmor integration. Do not disable Chromium's sandbox to work around an installation problem. See [Troubleshooting](docs/TROUBLESHOOTING.md).
@@ -80,7 +81,7 @@ The `.deb` is recommended on Ubuntu 24.04: its installer includes Electron's Ubu
 3. Choose the model and permission mode below the composer.
 4. Send a task. Watch progress, answer any requests, and inspect changes on the right.
 
-**Default mode:** allow editing inside the project, ask for approvals when needed. Read-only and full-access modes are also available. Codex enforces the selected mode.
+**Default mode:** follow your effective Codex CLI configuration. Read-only, Standard, and YOLO are available as explicit choices.
 
 | Shortcut      | Action               |
 | ------------- | -------------------- |
@@ -93,6 +94,12 @@ The `.deb` is recommended on Ubuntu 24.04: its installer includes Electron's Ubu
 Language: **Settings → General → Language**. Appearance preferences are saved automatically.
 
 ## CLI ↔ Desk synchronization
+
+Creating or selecting a conversation automatically opens its real CLI in **Ubuntu Terminal**. The first window is minimized from the start; subsequent conversations become background tabs in that window. Find it using Ubuntu's Terminal icon or window switcher. Desk does not raise it or change its selected tab. Repeated selections and Desk restarts reuse the same CLI process; closing a CLI lets Desk recreate it on the next selection. Closing Desk leaves native terminals running.
+
+New conversations are created before the first message, so their terminals are ready immediately. Startup mode choices remain visible and update the same shared conversation. The status bar shows when the terminal is ready, waiting for a standalone writer, or needs a retry. Archived history does not open terminals.
+
+This integration uses the installed **GNOME Terminal and Python GObject bindings**. The `.deb` installs them; AppImage users can install them with `sudo apt install gnome-terminal python3-gi`. Automatic background presentation is validated on Ubuntu 24.04 X11. Desk uses its own Terminal window and never modifies existing terminal tabs.
 
 Open a conversation and click **CLI sync**, or use a command marked **CLI** to open the embedded terminal. Both connect to the same official app-server with the same thread ID:
 
@@ -139,6 +146,7 @@ The renderer talks to Electron through validated IPC. Desk connects to the offic
 - Project bookmarks and preferences are stored in Electron's user-data directory, normally `~/.config/Codex Desk/state.json`.
 - Pasted images are saved privately in `~/.config/Codex Desk/attachments/` as PNGs and retained so existing CLI conversation references remain valid. Unsent image selections are not restored after restarting Desk.
 - Unsent text drafts are saved in the renderer's local storage under that same application data directory.
+- Native terminal screen IDs and process identity markers are kept privately in `~/.config/Codex Desk/terminals/` to avoid duplicates. They contain no authentication data.
 - Codex Desk does not copy API keys or authentication files into its own store.
 - Codex still contacts the configured model provider and tools. Subscription limits / API billing continue to apply.
 - Removing a project bookmark does not delete its files. Archiving uses Codex's archive operation and can be reversed.
@@ -155,7 +163,7 @@ The file inspector validates canonical paths and rejects symbolic links that esc
 
 ## Develop
 
-Use Node.js 22.16+ and npm:
+Use Node.js 22.16+, npm, Python 3, and a C compiler (`build-essential` on Ubuntu). Native terminal tests also need `gnome-terminal python3-gi openbox xvfb dbus-x11`:
 
 ```bash
 git clone https://github.com/moristeven477-ship-it/codex-desk.git
@@ -178,9 +186,8 @@ npm run package:linux
 Packages appear in `release/`. The native smoke check uses a synthetic CLI and temporary data:
 
 ```bash
-node scripts/native-smoke.mjs
-# On a machine without a display:
-xvfb-run -a node scripts/native-smoke.mjs
+npm run test:terminal
+DESK_TEST_CLIPBOARD=1 npm run test:native
 ```
 
 Optional checks against your own installed Codex:
@@ -191,7 +198,7 @@ npm run test:live -- --turn  # one isolated read-only model turn; uses your quot
 npx tsx scripts/live-sync.ts --turns  # real TUI ↔ Desk messages and goals; uses your quota
 ```
 
-The live-turn check archives only the test conversation it creates. No live checks run in CI.
+Terminal and native checks automatically use a private Xvfb display and D-Bus session, without starting user desktop services. The live-turn check archives only the test conversation it creates. No live Codex checks run in CI.
 
 ## Design and license
 

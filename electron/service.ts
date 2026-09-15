@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { CodexProcess, RpcError } from './codex';
 import { Store, settingsPatchSchema } from './store';
 import { directoryPath, gitDiff, gitStatus, listFiles, previewFile } from './workspace';
-import type { Bootstrap, JsonObject, Model, Thread, ThreadGoal, Turn } from '../src/shared/types';
+import type { Bootstrap, CodexEvent, JsonObject, Model, Thread, ThreadGoal, Turn } from '../src/shared/types';
 import { CodexTerminal } from './pty';
 import type { TerminalCommand } from './terminal';
 import { APP_VERSION } from '../src/shared/version';
@@ -429,6 +429,58 @@ export class DeskService extends EventEmitter {
         const args = z.object({ threadId: text, name: z.string().trim().min(1).max(200) }).parse(params);
         await this.codex.request('thread/name/set', args);
         return {};
+      }
+      case 'thread.configure': {
+        const args = z
+          .object({ threadId: text, access: z.enum(['read-only', 'workspace-write', 'danger-full-access']) })
+          .parse(params);
+        await this.resume(args.threadId);
+        if (this.activeTurns.has(args.threadId))
+          throw new Error('Wait for the running turn before changing startup mode.');
+        const overrides = permissionOverride(args.access);
+        // The official response only acknowledges queueing. Wait for the actual
+        // settings notification before letting a first message/goal use the mode.
+        return new Promise((resolve, reject) => {
+          let acknowledged = false,
+            applied = false;
+          const cleanup = () => {
+            clearTimeout(timer);
+            this.codex.off('event', receive);
+          };
+          const finish = () => {
+            if (acknowledged && applied) {
+              cleanup();
+              resolve({});
+            }
+          };
+          const receive = (event: CodexEvent) => {
+            if (event.method !== 'thread/settings/updated' || event.params?.threadId !== args.threadId)
+              return;
+            const settings = threadPermissions(event.params.threadSettings as JsonObject);
+            if (
+              settings.permissionMode !== args.access ||
+              settings.approvalPolicy !== overrides.approvalPolicy
+            )
+              return;
+            applied = true;
+            finish();
+          };
+          const timer = setTimeout(() => {
+            cleanup();
+            reject(new Error('Codex has not confirmed the startup mode. Try selecting it again.'));
+          }, 10_000);
+          this.codex.on('event', receive);
+          void this.codex
+            .request('thread/settings/update', { threadId: args.threadId, ...overrides })
+            .then(() => {
+              acknowledged = true;
+              finish();
+            })
+            .catch((error) => {
+              cleanup();
+              reject(error);
+            });
+        });
       }
       case 'thread.archive': {
         const args = threadArgs.parse(params);

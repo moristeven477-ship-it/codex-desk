@@ -1,6 +1,6 @@
 {
   "name": "codex-desk",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "A focused Ubuntu desktop workspace for Codex CLI.",
   "homepage": "https://github.com/moristeven477-ship-it/codex-desk",
@@ -28,7 +28,8 @@
     "package:dir": "npm run build && electron-builder --linux dir --publish never",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test:native": "node scripts/native-smoke.mjs"
+    "test:native": "node scripts/test-terminal.mjs --native",
+    "test:terminal": "node scripts/test-terminal.mjs"
   },
   "build": {
     "appId": "io.github.codexdesk",
@@ -76,9 +77,14 @@
         "libatspi2.0-0",
         "libuuid1",
         "libsecret-1-0",
-        "python3"
+        "python3",
+        "python3-gi",
+        "gnome-terminal"
       ]
-    }
+    },
+    "asarUnpack": [
+      "dist-electron/background-window.so"
+    ]
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",

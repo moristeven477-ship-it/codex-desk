@@ -2602,3 +2602,10 @@ select option {
     animation: none;
   }
 }
+.background-terminal-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 12px;
+  font-size: inherit;
+}

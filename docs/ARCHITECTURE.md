@@ -7,6 +7,8 @@ flowchart LR
   CLI[Real Codex TUI] -->|--remote unix://| Codex
   UI -->|xterm input / output through IPC| PTY[Python standard-library PTY]
   PTY --> CLI
+  Main -->|Background tab with same thread ID| GNOME[Ubuntu Terminal]
+  GNOME --> CLI
   Codex -->|Replies, events, approval requests| Main
   Main -->|Preload event subscription| UI
   Main --> Preferences[Local project bookmarks / preferences]
@@ -52,6 +54,16 @@ New threads use the selected project or an automatically created default workspa
 Goals use `thread/goal/get`, `set`, and `clear`, and their corresponding notifications. Plan mode is carried as `collaborationMode` with the server's built-in instructions. The slash inventory is pinned to the CLI 0.154.0 source; terminal commands execute in the actual TUI, preserving upstream behavior, platform gates, and custom commands.
 
 ## Build
+
+### Background Ubuntu terminals
+
+New-conversation screens materialize an empty Codex thread immediately. Selection and creation ask a narrow native IPC method to prepare its terminal. The main process resolves the real CLI binary, home, workspace and `--remote unix:// resume ID` arguments. Standalone writers are left alone. Generation checks keep slow creation from replacing a later selection; composer identity stays stable while the ID is allocated.
+
+`background-terminal.ts` serializes requests and coalesces simultaneous requests for one thread. The Python GObject helper connects to a dedicated GNOME Terminal server with its own application ID, reuses only Desk-recorded screens, and executes argument arrays through D-Bus. Private process markers include PID plus process start time to distinguish reused PIDs. Unique D-Bus owner IDs prevent stale screen paths from matching a restarted server. Neither screen records nor markers contain credentials. Native terminals outlive Desk; closing the embedded modal still closes only its own PTY.
+
+GNOME Terminal 3.52 presents a newly created window even when its factory receives `present-window=false` ([upstream implementation](https://github.com/GNOME/gnome-terminal/blob/3.52.0/src/terminal-gdbus.cc)). `background-window.c` intercepts GTK presentation only inside Desk's dedicated terminal server, only for its window role, and only on first presentation. It sets focus-on-map off and requests iconification before mapping. Later tabs use `active=false` and `present-window=false`; manual restoration works normally. The library is never installed into or loaded by the user's existing terminal server, and its preload setting is cleared before launching Codex. Tests assert actual X11 focus, minimized state, active tab, process reuse and keyboard input under a separate window manager.
+
+The helper is compiled with the host C compiler and packaged outside ASAR so the system loader can read it. Runtime requires GNOME Terminal, Python 3 and Python GObject bindings. The validated target is Ubuntu 24.04 X11; Wayland presentation has not been separately validated.
 
 Vite builds static renderer assets. esbuild bundles main and preload code, leaving only Electron external, and copies the Python PTY bridge alongside the main bundle. electron-builder packages the application for Linux. Runtime `node_modules` are excluded because application dependencies are bundled. The embedded terminal uses the system Python 3 standard library.
 

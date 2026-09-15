@@ -69,6 +69,7 @@ const goals = new Map();
 const settings = new Map();
 const loaded = new Set(['fixture-history']);
 let lastTurnParams;
+let settingsDelay = 0;
 const currentSettings = (thread) =>
   settings.get(thread.id) || {
     model: thread.model || 'test-codex',
@@ -212,9 +213,13 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       break;
     case 'thread/settings/update': {
       const next = { ...currentSettings(thread), ...p };
-      settings.set(thread.id, next);
       reply({});
-      notify('thread/settings/updated', { threadId: thread.id, threadSettings: next });
+      const apply = () => {
+        settings.set(thread.id, next);
+        notify('thread/settings/updated', { threadId: thread.id, threadSettings: next });
+      };
+      if (settingsDelay) setTimeout(apply, settingsDelay);
+      else apply();
       break;
     }
     case 'thread/goal/get':
@@ -357,6 +362,10 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       break;
     case 'test.settings':
       reply(currentSettings(thread));
+      break;
+    case 'test.settingsDelay':
+      settingsDelay = p.milliseconds;
+      reply({});
       break;
     case 'test.lock':
       if (p.locked) locked.add(p.threadId);

@@ -75,6 +75,11 @@ const test = base.extend<{ setup: DeskService }>({
             w.__deskImport(images.map((image) => ({ ...image, bytes: Array.from(image.bytes) }))),
           openExternal: async () => {},
           openTerminal: async () => {},
+          prepareTerminal: async (threadId) => {
+            const state = window as unknown as { preparedTerminals?: string[] };
+            (state.preparedTerminals ??= []).push(threadId);
+            return { state: 'ready' };
+          },
           windowAction: async () => {},
         };
       });
@@ -182,6 +187,7 @@ test('a small Ubuntu window keeps the composer and inspector usable', async ({ p
 });
 
 test('first message starts in the default workspace and drafts survive reload', async ({ page, setup }) => {
+  await expect(page.locator('.background-terminal-status')).toContainText('终端已在后台打开');
   await setup.handle('settings.update', { lastProjectId: '', lastThreadId: '' });
   await page.reload();
   const composer = page.getByRole('textbox', { name: '发送给 Codex 的消息' });
@@ -194,6 +200,70 @@ test('first message starts in the default workspace and drafts survive reload', 
   const thread = (await setup.handle('thread.read', { threadId: params.threadId })) as Thread;
   expect(thread.cwd).toBe(setup.defaultWorkspace);
   await expect(composer).toHaveValue('');
+});
+
+test('opening conversations prepares terminals before the first turn and preserves CLI startup changes', async ({
+  page,
+  setup,
+}) => {
+  await expect(page.locator('.background-terminal-status')).toContainText('终端已在后台打开');
+  const firstId = setup.store.state.settings.lastThreadId;
+  expect(firstId).toBeTruthy();
+  expect(((await setup.handle('thread.read', { threadId: firstId })) as Thread).turns).toHaveLength(0);
+  await page.getByRole('radio', { name: /YOLO/ }).check();
+  await expect
+    .poll(async () => ((await setup.handle('thread.open', { threadId: firstId })) as Thread).approvalPolicy)
+    .toBe('never');
+  await setup.codex.request('thread/settings/update', {
+    threadId: firstId,
+    sandboxPolicy: { type: 'readOnly', networkAccess: false },
+    approvalPolicy: 'on-request',
+  });
+  await expect(page.getByRole('combobox', { name: '权限模式', exact: true })).toContainText('只读');
+  const composer = page.getByRole('textbox', { name: '发送给 Codex 的消息' });
+  await composer.fill('Inherit the CLI mode after startup');
+  await composer.press('Enter');
+  await expect(page.locator('.markdown')).toContainText('Your local Codex conversation is working.');
+  const sent = await setup.codex.request<Record<string, unknown>>('test.lastTurn');
+  expect(sent.threadId).toBe(firstId);
+  expect(sent).not.toHaveProperty('sandboxPolicy');
+  expect(sent).not.toHaveProperty('approvalPolicy');
+  await page.locator('.new-conversation').click();
+  await expect.poll(() => setup.store.state.settings.lastThreadId).not.toBe(firstId);
+  await expect(page.getByRole('heading', { name: '今天，我们做点什么？' })).toBeVisible();
+  await page.getByRole('button', { name: /Understand the project/ }).click();
+  await expect(page.locator('.markdown')).toContainText('Atlas');
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { preparedTerminals: string[] }).preparedTerminals))
+    .toContain('fixture-history');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('slow new-conversation creation keeps images and text, and cannot replace a later selection', async ({
+  page,
+  setup,
+}) => {
+  await expect(page.locator('.background-terminal-status')).toContainText('终端已在后台打开');
+  const handle = setup.handle.bind(setup);
+  setup.handle = async (method, params) => {
+    if (method === 'thread.create') await new Promise((resolve) => setTimeout(resolve, 600));
+    return handle(method, params);
+  };
+  await page.locator('.new-conversation').click();
+  const composer = page.getByRole('textbox', { name: '发送给 Codex 的消息' });
+  await composer.fill('Keep typing while my terminal is prepared');
+  await pasteFixture(page);
+  await expect(page.locator('.background-terminal-status')).toContainText('终端已在后台打开');
+  await expect(composer).toHaveValue('Keep typing while my terminal is prepared');
+  await expect(page.locator('.image-attachments img')).toHaveCount(1);
+  await expect(composer).toBeFocused();
+  await page.locator('.new-conversation').click();
+  await page.getByRole('button', { name: /Understand the project/ }).click();
+  await expect(page.locator('.markdown')).toContainText('Atlas');
+  await page.waitForTimeout(750);
+  await expect(page.locator('.conversation-breadcrumb')).toContainText('Understand the project');
+  expect(setup.store.state.settings.lastThreadId).toBe('fixture-history');
+  await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
 test('model popup has descriptions, effort tabs and keyboard selection', async ({ page }) => {
@@ -399,7 +469,7 @@ test('CLI permission changes are inherited until an explicit Desk change; comple
     approvalPolicy: 'never',
   });
   await expect(permissions).toContainText('YOLO');
-  await page.getByRole('button', { name: /^新会话/ }).click();
+  await page.locator('.new-conversation').click();
   await page.getByRole('button', { name: '查看会话', exact: true }).click();
   await expect(page.locator('.conversation-breadcrumb')).toContainText('Understand the project');
   await expect(page.locator('.completion-toast')).toHaveCount(0);

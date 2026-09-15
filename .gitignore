@@ -12,3 +12,4 @@ playwright-report/
 .codex/
 coverage/
 .local/
+__pycache__/

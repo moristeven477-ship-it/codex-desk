@@ -23,6 +23,7 @@ const bridge: NativeBridge = {
   },
   openExternal: (url) => ipcRenderer.invoke('desk:open-url', url),
   openTerminal: (threadId) => ipcRenderer.invoke('desk:open-terminal', threadId),
+  prepareTerminal: (threadId) => ipcRenderer.invoke('desk:prepare-terminal', threadId),
   windowAction: (action) => ipcRenderer.invoke('desk:window', action),
 };
 contextBridge.exposeInMainWorld('codexDesk', bridge);

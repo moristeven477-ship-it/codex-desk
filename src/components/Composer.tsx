@@ -174,7 +174,7 @@ export function Composer({
           draft,
           modelId,
           effort,
-          chosenAccess,
+          startup ? undefined : chosenAccess,
           images.map((i) => i.path),
           modeOverride,
         )

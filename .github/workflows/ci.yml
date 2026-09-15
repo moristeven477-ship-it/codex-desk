@@ -21,6 +21,8 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - run: npm run build
+      - run: sudo apt-get update && sudo apt-get install -y gnome-terminal python3-gi openbox xvfb dbus-x11
+      - run: npm run test:terminal
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

@@ -25,6 +25,7 @@ _截图使用测试项目，应用实际连接本机 Codex CLI。_
 - 中英文切换，深浅色主题，侧栏与文件面板调整。
 - 无须先选项目，直接在默认工作区开始；文字草稿跨重启保存。
 - CLI 与 Desk 共用同一会话，实时同步消息、审批、设置和目标。
+- 创建或点开会话时，自动在 Ubuntu 终端中准备对应的后台标签页；重复打开会复用同一个 CLI 进程。
 - 完整 `/` 命令菜单、内置真实 CLI、右上角目标面板。
 - 带说明与选中状态的模型弹窗，以及渐变赛博朋克樱花 SVG 图标。
 
@@ -48,7 +49,7 @@ codex login
 从 [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest) 下载 `.deb`：
 
 ```bash
-sudo apt install ./codex-desk-0.2.1-amd64.deb
+sudo apt install ./codex-desk-0.2.2-amd64.deb
 ```
 
 安装后在 Ubuntu 应用菜单中打开 **Codex Desk**，或运行 `codex-desk`。
@@ -56,14 +57,14 @@ sudo apt install ./codex-desk-0.2.1-amd64.deb
 也可下载便携 AppImage：
 
 ```bash
-chmod +x codex-desk-0.2.1-x86_64.AppImage
-./codex-desk-0.2.1-x86_64.AppImage
+chmod +x codex-desk-0.2.2-x86_64.AppImage
+./codex-desk-0.2.2-x86_64.AppImage
 ```
 
 没有 FUSE 时：
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.1-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.2-x86_64.AppImage
 ```
 
 Ubuntu 24.04 优先使用 `.deb`，安装器包含 Electron 的 AppArmor 集成。遇到沙箱错误时参考[故障排查](docs/TROUBLESHOOTING.md)，不要通过关闭沙箱解决。
@@ -122,6 +123,14 @@ Ubuntu 24.04 优先使用 `.deb`，安装器包含 Electron 的 AppArmor 集成�
 
 ## CLI 与 Desk 双向同步
 
+新建或选择会话时，Desk 会自动在 **Ubuntu 的终端应用**中打开对应 CLI。首次窗口直接最小化，后续会话加入该窗口的后台标签页，不抢焦点，也不切换当前终端标签。需要使用时，从 Ubuntu 的终端图标或窗口切换器找到它。
+
+重复选择会话、重启 Desk 会复用已有终端；关闭 CLI 后再次选择会话会重新准备。关闭 Desk 后，这些原生终端继续运行。已有其他终端窗口和标签页保持原样。
+
+新会话在首条消息前就已创建，启动模式仍可选择，主动更改会立即同步到同一个 CLI 会话。状态栏显示后台终端是否就绪，并提供重试入口。独立 CLI 正在占用的会话会等待其释放；归档历史不会自动启动终端。
+
+依赖系统的 `gnome-terminal` 和 `python3-gi`，`.deb` 会自动安装。使用 AppImage 时可运行 `sudo apt install gnome-terminal python3-gi` 安装这两个组件。后台窗口行为已在 Ubuntu 24.04 X11 验证。
+
 打开会话，点击「CLI 同步」，或从 `/` 菜单打开内置终端。两边使用同一个会话 ID：
 
 ```bash
@@ -144,7 +153,7 @@ codex --remote unix:// resume 会话ID
 
 ## 从源码运行
 
-需要 Node.js 22.16+、npm，以及能正常使用的 Codex CLI。
+需要 Node.js 22.16+、npm、Python 3、C 编译器（Ubuntu 的 `build-essential`），以及能正常使用的 Codex CLI。原生终端测试另需 `gnome-terminal python3-gi openbox xvfb dbus-x11`。
 
 ```bash
 git clone https://github.com/moristeven477-ship-it/codex-desk.git
@@ -161,6 +170,8 @@ npm run package:linux
 ```
 
 首次运行浏览器测试需要 `npx playwright install chromium`，或本机已有 Google Chrome。
+
+`npm run test:terminal` 验证后台终端的焦点、复用和输入；`DESK_TEST_CLIPBOARD=1 npm run test:native` 验证打包应用。两者自动使用独立的 Xvfb 显示器和 D-Bus 会话，不启动用户桌面服务。
 
 可选真实 CLI 检查：`npm run test:live` 只读取连接、模型与历史；加上 `-- --turn` 会创建一次隔离的只读测试对话，使用你的额度，并在结束后归档该测试会话。
 

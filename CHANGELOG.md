@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2
+
+- Automatically prepare a real Ubuntu Terminal tab when creating or selecting a conversation. The first window starts minimized; later tabs stay in the background and leave the selected tab and keyboard focus alone.
+- Reuse the same terminal and CLI process for a conversation across selections and Desk restarts. Closing Desk leaves these native terminals running; reopening a closed CLI recreates its tab.
+- Materialize new conversations before their first message while keeping startup modes available. Explicit startup changes immediately update the shared CLI; later CLI settings remain authoritative. Preserve text and images during asynchronous creation.
+- Show bilingual background terminal status and a retry action. Standalone writers remain untouched and are connected after release; archived history does not launch a terminal.
+
 ## 0.2.1
 
 - Paste screenshots and copied images with Ctrl+V, preview/remove them before sending, and preserve ordinary text paste. Up to 8 images per message, 20 MiB each; pasted rasters are stored as private PNG attachments for shared CLI history.

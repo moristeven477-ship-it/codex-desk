@@ -190,6 +190,7 @@ export interface NativeBridge {
   importImages(images: ImageUpload[]): Promise<ImageAttachment[]>;
   openExternal(url: string): Promise<void>;
   openTerminal(threadId: string): Promise<void>;
+  prepareTerminal(threadId: string): Promise<{ state: 'ready' | 'waiting' | 'error'; error?: string }>;
   windowAction(action: 'minimize' | 'maximize' | 'close'): Promise<void>;
 }
 declare global {

@@ -220,3 +220,29 @@ test('embedded CLI uses a real PTY, supports resize and input, and closes its ow
     await f.close();
   }
 });
+
+test('startup mode waits for Codex to apply queued settings before returning', async () => {
+  const f = await fixture();
+  try {
+    const thread = (await f.desk.handle('thread.create', {})) as Thread;
+    await f.cli.request('test.settingsDelay', { milliseconds: 150 });
+    let finished = false;
+    const configure = f.desk
+      .handle('thread.configure', { threadId: thread.id, access: 'danger-full-access' })
+      .then(() => {
+        finished = true;
+      });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(finished, false);
+    await configure;
+    const opened = (await f.desk.handle('thread.open', { threadId: thread.id })) as Thread;
+    assert.equal(opened.permissionMode, 'danger-full-access');
+    assert.equal(opened.approvalPolicy, 'never');
+    await f.desk.handle('turn.start', { threadId: thread.id, text: 'Use the confirmed CLI settings' });
+    const actual = await f.cli.request<Record<string, unknown>>('test.lastTurn');
+    assert.ok(!('sandboxPolicy' in actual));
+    assert.ok(!('approvalPolicy' in actual));
+  } finally {
+    await f.close();
+  }
+});
