@@ -1,0 +1,14 @@
+node_modules/
+dist/
+dist-electron/
+release/
+test-results/
+playwright-report/
+.env*
+*.log
+.DS_Store
+.idea/
+.vscode/
+.codex/
+coverage/
+.local/

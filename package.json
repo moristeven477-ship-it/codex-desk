@@ -1,0 +1,93 @@
+{
+  "name": "codex-desk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A focused Ubuntu desktop workspace for Codex CLI.",
+  "homepage": "https://github.com/moristeven477-ship-it/codex-desk",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/moristeven477-ship-it/codex-desk.git"
+  },
+  "desktopName": "codex-desk.desktop",
+  "author": "Codex Desk contributors",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "tsc --noEmit && vite build && node scripts/build.mjs",
+    "start": "electron .",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "test:e2e": "playwright test",
+    "test:live": "tsx scripts/live-smoke.ts",
+    "package:linux": "npm run build && electron-builder --linux deb AppImage --publish never",
+    "package:dir": "npm run build && electron-builder --linux dir --publish never",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test:native": "node scripts/native-smoke.mjs"
+  },
+  "build": {
+    "appId": "io.github.codexdesk",
+    "productName": "Codex Desk",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "assets/icon.png",
+      "package.json",
+      "LICENSE",
+      "THIRD_PARTY_NOTICES.txt",
+      "!node_modules/**"
+    ],
+    "asar": true,
+    "linux": {
+      "target": [
+        "deb",
+        "AppImage"
+      ],
+      "category": "Development",
+      "icon": "assets/icon.png",
+      "executableName": "codex-desk",
+      "syncDesktopName": true,
+      "artifactName": "codex-desk-${version}-${arch}.${ext}",
+      "desktop": {
+        "entry": {
+          "StartupWMClass": "codex-desk",
+          "Keywords": "Codex;AI;Development;"
+        }
+      }
+    },
+    "deb": {
+      "maintainer": "Codex Desk contributors <opensource@users.noreply.github.com>"
+    }
+  },
+  "dependencies": {
+    "lucide-react": "^1.46.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.5.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  }
+}
