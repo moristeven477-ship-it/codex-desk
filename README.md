@@ -163,7 +163,7 @@ The file inspector validates canonical paths and rejects symbolic links that esc
 
 ## Develop
 
-Use Node.js 22.16+, npm, Python 3, and a C compiler (`build-essential` on Ubuntu). Native terminal tests also need `gnome-terminal python3-gi openbox xvfb dbus-x11`:
+Use Node.js 22.16+, npm, Python 3, and a C compiler (`build-essential` on Ubuntu). Native terminal tests also need `gnome-terminal python3-gi gir1.2-gtk-3.0 openbox xvfb dbus-x11`:
 
 ```bash
 git clone https://github.com/moristeven477-ship-it/codex-desk.git

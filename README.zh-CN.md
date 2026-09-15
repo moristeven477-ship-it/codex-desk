@@ -153,7 +153,7 @@ codex --remote unix:// resume 会话ID
 
 ## 从源码运行
 
-需要 Node.js 22.16+、npm、Python 3、C 编译器（Ubuntu 的 `build-essential`），以及能正常使用的 Codex CLI。原生终端测试另需 `gnome-terminal python3-gi openbox xvfb dbus-x11`。
+需要 Node.js 22.16+、npm、Python 3、C 编译器（Ubuntu 的 `build-essential`），以及能正常使用的 Codex CLI。原生终端测试另需 `gnome-terminal python3-gi gir1.2-gtk-3.0 openbox xvfb dbus-x11`。
 
 ```bash
 git clone https://github.com/moristeven477-ship-it/codex-desk.git

@@ -16,7 +16,7 @@ Validated on Ubuntu 24.04.4 x86-64 (X11), GNOME Terminal 3.52, Node.js 22.23.2, 
 ## Reproduce
 
 ```bash
-sudo apt install build-essential gnome-terminal python3-gi openbox xvfb dbus-x11
+sudo apt install build-essential gnome-terminal python3-gi gir1.2-gtk-3.0 openbox xvfb dbus-x11
 npm ci
 npm run format:check
 npm run typecheck
