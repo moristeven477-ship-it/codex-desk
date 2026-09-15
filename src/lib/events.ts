@@ -6,6 +6,30 @@ export function reduceThread(thread: Thread, event: CodexEvent): Thread {
   if (event.method === 'thread/status/changed') return { ...thread, status: p.status as Thread['status'] };
   if (event.method === 'thread/name/updated')
     return { ...thread, name: String(p.threadName ?? p.name ?? thread.name ?? '') };
+  if (event.method === 'thread/goal/updated') return { ...thread, goal: p.goal as Thread['goal'] };
+  if (event.method === 'thread/goal/cleared') return { ...thread, goal: null };
+  if (event.method === 'thread/settings/updated') {
+    const settings = p.threadSettings as {
+      model: string;
+      effort: string | null;
+      cwd: string;
+      sandboxPolicy: { type: string };
+      collaborationMode?: { mode: Thread['collaborationMode'] };
+    };
+    return {
+      ...thread,
+      model: settings.model,
+      reasoningEffort: settings.effort,
+      cwd: settings.cwd,
+      collaborationMode: settings.collaborationMode?.mode,
+      permissionMode:
+        settings.sandboxPolicy.type === 'readOnly'
+          ? 'read-only'
+          : settings.sandboxPolicy.type === 'dangerFullAccess'
+            ? 'danger-full-access'
+            : 'workspace-write',
+    };
+  }
   let turns = [...(thread.turns ?? [])];
   if (event.method === 'turn/started' || event.method === 'turn/completed') {
     const turn = p.turn as Turn;

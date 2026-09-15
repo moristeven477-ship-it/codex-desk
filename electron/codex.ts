@@ -6,6 +6,9 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { Approval, CodexEvent, Connection, JsonObject, Settings } from '../src/shared/types';
+import { APP_VERSION } from '../src/shared/version';
+import { socketReady, startSharedListener } from './shared-server';
+import WebSocket from 'ws';
 
 const exec = promisify(execFile);
 const supportedRequests = new Set([
@@ -63,6 +66,7 @@ export class CodexProcess extends EventEmitter {
   connection: Connection = { phase: 'stopped' };
   approvals = new Map<string | number, Approval>();
   private child?: ChildProcessWithoutNullStreams;
+  private socket?: WebSocket;
   private nextId = 1;
   private pending = new Map<
     number,
@@ -72,7 +76,10 @@ export class CodexProcess extends EventEmitter {
   private tail = '';
   private generation = 0;
 
-  constructor(private timeoutMs = 60_000) {
+  constructor(
+    private timeoutMs = 60_000,
+    private transport: 'shared' | 'stdio' = 'shared',
+  ) {
     super();
   }
   private publish(event: CodexEvent) {
@@ -104,51 +111,96 @@ export class CodexProcess extends EventEmitter {
         maxBuffer: 64 * 1024,
       });
       if (generation !== this.generation) throw new Error('Codex startup cancelled.');
-      const child = spawn(binary, ['app-server'], {
-        env,
-        cwd: homedir(),
-        stdio: ['pipe', 'pipe', 'pipe'],
-        windowsHide: true,
-      });
-      this.child = child;
-      let buffer = '';
-      child.stdout.setEncoding('utf8');
-      child.stderr.setEncoding('utf8');
-      child.stderr.on('data', (s: string) => {
-        this.tail = (this.tail + s).slice(-4000);
-      });
-      child.stdout.on('data', (chunk: string) => {
-        if (generation !== this.generation) return;
-        buffer += chunk;
-        if (buffer.length > 32 * 1024 * 1024) {
-          this.fail(new Error('Codex sent an oversized protocol message.'));
-          return;
+      // The daemon owns the writer. Desk and the real TUI are independent subscribers.
+      // This command starts it only when absent; never restart a daemon used by other clients.
+      const codexHome = env.CODEX_HOME || path.join(homedir(), '.codex');
+      const socket = path.join(codexHome, 'app-server-control', 'app-server-control.sock');
+      if (this.transport === 'shared' && !(await socketReady(socket))) {
+        try {
+          await exec(binary, ['app-server', 'daemon', 'start'], {
+            env,
+            timeout: 20_000,
+            maxBuffer: 64 * 1024,
+          });
+        } catch {
+          await startSharedListener(binary, env, socket);
         }
-        let newline: number;
-        while ((newline = buffer.indexOf('\n')) >= 0) {
-          const line = buffer.slice(0, newline).trim();
-          buffer = buffer.slice(newline + 1);
-          if (!line) continue;
+      }
+      if (generation !== this.generation) throw new Error('Codex startup cancelled.');
+      if (this.transport === 'shared') {
+        const client = new WebSocket(`ws+unix://${socket}:/`, {
+          headers: { Host: 'localhost' },
+          perMessageDeflate: false,
+          maxPayload: 32 * 1024 * 1024,
+          handshakeTimeout: 10_000,
+        });
+        this.socket = client;
+        client.on('message', (data) => {
+          if (generation !== this.generation) return;
           try {
-            this.receive(JSON.parse(line) as JsonObject);
+            this.receive(JSON.parse(data.toString()) as JsonObject);
           } catch {
             this.publish({ kind: 'notice', message: 'Ignored a malformed Codex protocol message.' });
           }
-        }
-      });
-      child.on('error', (err) => {
-        if (generation === this.generation) this.fail(err);
-      });
-      child.stdin.on('error', (err) => {
-        if (generation === this.generation) this.fail(err);
-      });
-      child.on('exit', (code, signal) => {
-        if (generation !== this.generation) return;
-        this.child = undefined;
-        this.fail(new Error(`Codex app-server exited (${signal ?? code}). ${this.tail.trim()}`));
-      });
+        });
+        client.on('error', (error) => {
+          if (generation === this.generation && this.socket === client) this.fail(error);
+        });
+        client.on('close', () => {
+          if (generation === this.generation && this.socket === client)
+            this.fail(new Error('The shared Codex connection closed. Reconnect in Settings.'));
+        });
+        await new Promise<void>((resolve, reject) => {
+          client.once('open', resolve);
+          client.once('error', reject);
+        });
+      } else {
+        const child = spawn(binary, ['app-server'], {
+          env,
+          cwd: homedir(),
+          stdio: ['pipe', 'pipe', 'pipe'],
+          windowsHide: true,
+        });
+        this.child = child;
+        let buffer = '';
+        child.stdout.setEncoding('utf8');
+        child.stderr.setEncoding('utf8');
+        child.stderr.on('data', (s: string) => {
+          this.tail = (this.tail + s).slice(-4000);
+        });
+        child.stdout.on('data', (chunk: string) => {
+          if (generation !== this.generation) return;
+          buffer += chunk;
+          if (buffer.length > 32 * 1024 * 1024) {
+            this.fail(new Error('Codex sent an oversized protocol message.'));
+            return;
+          }
+          let newline: number;
+          while ((newline = buffer.indexOf('\n')) >= 0) {
+            const line = buffer.slice(0, newline).trim();
+            buffer = buffer.slice(newline + 1);
+            if (!line) continue;
+            try {
+              this.receive(JSON.parse(line) as JsonObject);
+            } catch {
+              this.publish({ kind: 'notice', message: 'Ignored a malformed Codex protocol message.' });
+            }
+          }
+        });
+        child.on('error', (err) => {
+          if (generation === this.generation) this.fail(err);
+        });
+        child.stdin.on('error', (err) => {
+          if (generation === this.generation) this.fail(err);
+        });
+        child.on('exit', (code, signal) => {
+          if (generation !== this.generation) return;
+          this.child = undefined;
+          this.fail(new Error(`Codex app-server exited (${signal ?? code}). ${this.tail.trim()}`));
+        });
+      }
       const initialized = await this.request<JsonObject>('initialize', {
-        clientInfo: { name: 'codex_desk', title: 'Codex Desk', version: '0.1.0' },
+        clientInfo: { name: 'codex_desk', title: 'Codex Desk', version: APP_VERSION },
         capabilities: { experimentalApi: true },
       });
       this.write({ method: 'initialized' });
@@ -156,17 +208,19 @@ export class CodexProcess extends EventEmitter {
         phase: 'ready',
         binary,
         version: version.trim(),
-        pid: child.pid,
+        pid: this.child?.pid,
+        shared: this.transport === 'shared',
+        endpoint: this.transport === 'shared' ? 'unix://' : undefined,
         codexHome: String(initialized.codexHome ?? env.CODEX_HOME ?? path.join(homedir(), '.codex')),
       });
     } catch (err) {
-      this.fail(err instanceof Error ? err : new Error(String(err)));
+      if (generation === this.generation) this.fail(err instanceof Error ? err : new Error(String(err)));
       throw err;
     }
   }
 
   request<T = unknown>(method: string, params?: JsonObject): Promise<T> {
-    if (!this.child || this.child.killed)
+    if ((!this.child || this.child.killed) && this.socket?.readyState !== WebSocket.OPEN)
       return Promise.reject(new Error('Codex is not connected. Open Settings to connect.'));
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
@@ -185,6 +239,10 @@ export class CodexProcess extends EventEmitter {
     });
   }
   private write(message: JsonObject) {
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify(message));
+      return;
+    }
     if (!this.child?.stdin.writable) throw new Error('Codex input stream is closed.');
     this.child.stdin.write(JSON.stringify(message) + '\n');
   }
@@ -256,6 +314,12 @@ export class CodexProcess extends EventEmitter {
     this.rejectPending(error);
     const child = this.child;
     this.child = undefined;
+    const socket = this.socket;
+    this.socket = undefined;
+    if (socket) {
+      socket.removeAllListeners('close');
+      socket.terminate();
+    }
     if (child && !child.killed) child.kill();
     this.status({ ...this.connection, phase: 'error', error: error.message });
   }
@@ -263,6 +327,9 @@ export class CodexProcess extends EventEmitter {
     ++this.generation;
     const child = this.child;
     this.child = undefined;
+    const socket = this.socket;
+    this.socket = undefined;
+    if (socket) socket.close();
     this.rejectPending(new Error('Codex disconnected.'));
     if (child && child.exitCode === null && child.signalCode === null) {
       await new Promise<void>((resolve) => {

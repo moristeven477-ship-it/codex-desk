@@ -1,15 +1,14 @@
 # Changelog
 
-## 0.1.0 — 2026-09-15
+## 0.2.0
 
-First public release of Codex Desk, a native Ubuntu desktop workspace dedicated to Codex CLI.
+- Shared official app-server connection for same-thread CLI ↔ Desk synchronization; preserve history and drafts when a standalone writer needs to reconnect.
+- First message starts in a default workspace. Empty sessions are materialized for CLI resume, and text drafts survive restarts.
+- Detailed model, reasoning, and permission popovers with keyboard navigation.
+- Complete searchable CLI 0.154.0 slash-command inventory, with embedded real CLI support for terminal commands and custom commands.
+- Goal controls and a top-right status indicator synchronized through official goal notifications; real Plan mode and session status.
+- Original gradient SVG cyberpunk sakura icon, also used for Ubuntu desktop packages.
 
-- Local projects and existing CLI conversation history; create, continue, rename, fork, archive, and restore.
-- Streaming replies and tool activity, task interruption, approvals, and interactive questions.
-- Model, reasoning effort, and permission controls; native image attachments.
-- File preview and Git changes inspector, including projects inside larger repositories.
-- English and Simplified Chinese interfaces, dark/light themes, resizable panels, keyboard shortcuts.
-- Isolated Electron renderer and local app-server transport; reuse existing CLI authentication.
-- Ubuntu x86-64 `.deb` and AppImage packages; MIT-licensed source, bilingual documentation, and CI.
+## 0.1.0
 
-Validated on Ubuntu 24.04 with Codex CLI 0.154.0. See [validation](docs/VALIDATION.md) for coverage and limits.
+- Initial native Ubuntu desktop application: projects, persisted Codex history, streaming conversations, approvals, models, image attachments, file/Git inspection, and Chinese / English light / dark interfaces.

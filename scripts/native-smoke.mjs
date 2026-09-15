@@ -2,6 +2,7 @@ import { _electron as electron, expect } from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, chmod, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
+import { sharedFixture } from '../tests/fixtures/shared-server.mjs';
 
 const directory = await mkdtemp(path.join(tmpdir(), 'codex-desk-native-'));
 const project = path.join(directory, 'atlas-workspace');
@@ -9,6 +10,7 @@ await mkdir(project);
 await writeFile(path.join(project, 'README.md'), '# Atlas\nSynthetic desktop smoke-test workspace.\n');
 const binary = path.resolve('tests/fixtures/fake-codex.mjs');
 await chmod(binary, 0o755);
+const shared = await sharedFixture(directory, project);
 await writeFile(
   path.join(directory, 'state.json'),
   JSON.stringify({
@@ -17,7 +19,7 @@ await writeFile(
       locale: 'en',
       theme: 'dark',
       binaryPath: binary,
-      codexHome: '',
+      codexHome: shared.home,
       lastProjectId: 'atlas',
       lastThreadId: '',
     },
@@ -46,16 +48,35 @@ try {
   await expect(page.locator('.markdown')).toContainText('Your local Codex conversation is working.');
   await mkdir('test-results', { recursive: true });
   await page.screenshot({ path: 'test-results/native-ubuntu.png', animations: 'disabled' });
+  await page.getByRole('textbox', { name: 'Message Codex' }).fill('/goal');
+  await page.getByRole('textbox', { name: 'Message Codex' }).press('Enter');
+  await page
+    .getByRole('textbox', { name: 'Objective', exact: true })
+    .fill('Deliver a polished Atlas workspace');
+  await page.getByRole('button', { name: 'Start goal', exact: true }).click();
+  await expect(page.locator('.goal-badge')).toContainText('Pursuing goal');
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Message Codex' }).fill('/mcp verbose');
+  await page.getByRole('textbox', { name: 'Message Codex' }).press('Enter');
+  await expect(page.locator('.xterm-screen')).toContainText('CODEX_CLI_FIXTURE_READY');
+  await page.getByRole('button', { name: 'Insert command' }).click();
+  await page.locator('.xterm-helper-textarea').press('Enter');
+  await expect(page.locator('.xterm-screen')).toContainText('CLI executed: /mcp verbose');
+  await page.screenshot({ path: 'test-results/native-cli-terminal.png', animations: 'disabled' });
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
   if (errors.length) throw new Error(errors.join('\n'));
   console.log(
     JSON.stringify({
       native: 'passed',
-      transport: 'Electron IPC + Codex subprocess',
+      transport: 'Electron IPC + shared Unix WebSocket',
+      embeddedCliPty: 'passed',
+      goals: 'passed',
       rendererSandbox: preferences.sandbox,
       chromiumSandboxDisabledForTest: process.env.DESK_TEST_NO_SANDBOX === '1',
     }),
   );
 } finally {
   if (desktop) await desktop.close();
+  await shared.close();
   await rm(directory, { recursive: true, force: true });
 }

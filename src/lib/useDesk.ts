@@ -4,13 +4,17 @@ import type {
   Approval,
   Bootstrap,
   CodexEvent,
+  CollaborationMode,
   JsonObject,
   Project,
   Settings,
   Thread,
+  ThreadGoal,
   Turn,
 } from '../shared/types';
 import { reduceThread } from './events';
+import { isWriterConflict } from '../shared/errors';
+import { APP_VERSION } from '../shared/version';
 
 export async function request<T = unknown>(method: string, params?: JsonObject): Promise<T> {
   if (!window.codexDesk) throw new Error('Open Codex Desk using the desktop application.');
@@ -21,6 +25,7 @@ const empty: Bootstrap = {
   settings: {
     binaryPath: '',
     codexHome: '',
+    defaultWorkspace: '',
     locale: 'zh',
     theme: 'dark',
     lastProjectId: '',
@@ -30,7 +35,8 @@ const empty: Bootstrap = {
   models: [],
   account: null,
   approvals: [],
-  appVersion: '0.1.0',
+  appVersion: APP_VERSION,
+  defaultWorkspace: '',
 };
 
 export function useDesk() {
@@ -82,23 +88,36 @@ export function useDesk() {
   );
 
   const openThread = useCallback(
-    async (id: string) => {
-      const generation = ++selectionGeneration.current;
-      setThreadId(id);
-      setLoading(true);
+    async (id: string, background = false) => {
+      const generation = background ? selectionGeneration.current : ++selectionGeneration.current;
+      if (!background) {
+        setThreadId(id);
+        setLoading(true);
+      }
       const buffered: CodexEvent[] = [];
       pendingEvents.current.set(id, buffered);
       try {
-        const thread = await request<Thread>('thread.read', { threadId: id });
+        const thread = await request<Thread>('thread.open', {
+          threadId: id,
+          archived: current.current.archived,
+        });
+        try {
+          thread.goal = (await request<{ goal: ThreadGoal | null }>('goal.get', { threadId: id })).goal;
+        } catch {
+          /* Older Codex versions may not expose goals. */
+        }
         const hydrated = buffered.reduce(reduceThread, thread);
         if (generation !== selectionGeneration.current) return;
         setCache((old) => ({ ...old, [id]: hydrated }));
-        void request('settings.update', { lastThreadId: id }).catch(fail);
+        if (!background) {
+          setError('');
+          void request('settings.update', { lastThreadId: id }).catch(fail);
+        }
       } catch (e) {
         if (generation === selectionGeneration.current) fail(e);
       } finally {
         if (pendingEvents.current.get(id) === buffered) pendingEvents.current.delete(id);
-        if (generation === selectionGeneration.current) setLoading(false);
+        if (!background && generation === selectionGeneration.current) setLoading(false);
       }
     },
     [fail],
@@ -200,9 +219,27 @@ export function useDesk() {
     return () => clearTimeout(timer);
   }, [projectId, archived, search, boot.connection.phase, boot.projects, refresh]);
   useEffect(() => {
+    if (
+      !threadId ||
+      cache[threadId]?.syncState !== 'external' ||
+      archived ||
+      boot.connection.phase !== 'ready'
+    )
+      return;
+    let pending = false;
+    const timer = setInterval(() => {
+      if (pending || document.visibilityState !== 'visible') return;
+      pending = true;
+      void openThread(threadId, true).finally(() => {
+        pending = false;
+      });
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [threadId, cache[threadId]?.syncState, archived, boot.connection.phase, openThread]);
+  useEffect(() => {
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') void refresh();
-    }, 15_000);
+    }, 3000);
     const focus = () => {
       void refresh();
     };
@@ -220,6 +257,7 @@ export function useDesk() {
     setLoading(false);
     setArchived(false);
     setSearch('');
+    setError('');
     void request('settings.update', { lastProjectId: id, lastThreadId: '' }).catch(fail);
   }
   async function addProject(folder?: string) {
@@ -246,25 +284,68 @@ export function useDesk() {
       fail(e);
     }
   }
-  async function send(text: string, model: string, effort: string, access: AccessMode, images: string[]) {
+  const creating = useRef<Promise<string> | null>(null);
+  async function ensureThread(model?: string, access: AccessMode = 'workspace-write'): Promise<string> {
+    if (current.current.threadId) return current.current.threadId;
+    if (creating.current) return creating.current;
+    const operation = (async () => {
+      const selectedProject = current.current.projectId;
+      const thread = await request<Thread>('thread.create', {
+        ...(selectedProject ? { projectId: selectedProject } : {}),
+        ...(model ? { model } : {}),
+        access,
+      });
+      if (!selectedProject) {
+        const data = await request<Bootstrap>('bootstrap');
+        setBoot(data);
+        const defaultProject = data.projects.find((p) => p.path === thread.cwd);
+        if (defaultProject) {
+          setProjectId(defaultProject.id);
+          await request('settings.update', { lastProjectId: defaultProject.id });
+        }
+      }
+      current.current.threadId = thread.id;
+      setThreadId(thread.id);
+      setCache((old) => ({ ...old, [thread.id]: thread }));
+      setThreads((old) => [thread, ...old.filter((item) => item.id !== thread.id)]);
+      await request('settings.update', { lastThreadId: thread.id });
+      return thread.id;
+    })();
+    creating.current = operation;
+    try {
+      return await operation;
+    } finally {
+      creating.current = null;
+    }
+  }
+  async function setGoal(patch: {
+    objective?: string;
+    status?: 'active' | 'paused';
+    tokenBudget?: number | null;
+  }) {
+    const id = await ensureThread();
+    const { goal } = await request<{ goal: ThreadGoal }>('goal.set', { threadId: id, ...patch });
+    setCache((old) => ({ ...old, [id]: { ...old[id], goal } }));
+  }
+  async function clearGoal() {
+    if (!threadId) return;
+    await request('goal.clear', { threadId });
+    setCache((old) => ({ ...old, [threadId]: { ...old[threadId], goal: null } }));
+  }
+  async function send(
+    text: string,
+    model: string,
+    effort: string,
+    access: AccessMode,
+    images: string[],
+    collaborationMode?: CollaborationMode,
+  ) {
     if (sendingRef.current) return false;
     sendingRef.current = true;
     setSending(true);
     setError('');
     try {
-      let id = threadId;
-      if (!id) {
-        if (!projectId)
-          throw new Error(
-            boot.settings.locale === 'zh' ? '请先选择或打开一个项目。' : 'Choose or open a project first.',
-          );
-        const thread = await request<Thread>('thread.create', { projectId, model, access });
-        id = thread.id;
-        setThreadId(id);
-        setCache((old) => ({ ...old, [id]: thread }));
-        setThreads((old) => [thread, ...old]);
-        await request('settings.update', { lastThreadId: id });
-      }
+      const id = await ensureThread(model, access);
       const { turn } = await request<{ turn: Turn }>('turn.start', {
         threadId: id,
         text,
@@ -272,6 +353,7 @@ export function useDesk() {
         effort,
         access,
         images,
+        ...(collaborationMode ? { collaborationMode } : {}),
       });
       // Responses may arrive after turn/completed. Never regress a completed turn to inProgress.
       setCache((old) => {
@@ -283,7 +365,12 @@ export function useDesk() {
       void refresh();
       return true;
     } catch (e) {
-      fail(e);
+      if (threadId && isWriterConflict(e)) {
+        setCache((old) =>
+          old[threadId] ? { ...old, [threadId]: { ...old[threadId], syncState: 'external' } } : old,
+        );
+        setError('');
+      } else fail(e);
       return false;
     } finally {
       sendingRef.current = false;
@@ -292,13 +379,15 @@ export function useDesk() {
   }
   async function updateSettings(patch: Partial<Settings>) {
     const settings = await request<Settings>('settings.update', patch);
-    setBoot((old) => ({ ...old, settings }));
+    const { defaultWorkspace } = await request<Bootstrap>('bootstrap');
+    setBoot((old) => ({ ...old, settings, defaultWorkspace }));
   }
   async function reconnect() {
     setError('');
     const data = await request<Bootstrap>('codex.restart');
     setBoot(data);
     setApprovals(data.approvals);
+    if (threadId) await openThread(threadId);
     void refresh();
   }
   async function rename(id: string, name: string) {
@@ -365,6 +454,9 @@ export function useDesk() {
     addProject,
     removeProject,
     send,
+    ensureThread,
+    setGoal,
+    clearGoal,
     updateSettings,
     reconnect,
     rename,
@@ -376,6 +468,7 @@ export function useDesk() {
       setThreadId('');
       setLoading(false);
       setArchived(false);
+      setError('');
       void request('settings.update', { lastThreadId: '' }).catch(fail);
     },
   };

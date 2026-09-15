@@ -37,6 +37,10 @@ import { Inspector } from './components/Inspector';
 import { ApprovalCard } from './components/Approvals';
 import { Settings } from './components/Settings';
 import { Dialog } from './components/Dialog';
+import { SyncDialog } from './components/SyncDialog';
+import { GoalBadge, GoalPanel } from './components/GoalPanel';
+import { StatusPanel } from './components/StatusPanel';
+import { CliTerminal } from './components/CliTerminal';
 
 export function App() {
   const desk = useDesk();
@@ -61,7 +65,32 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
   const [renaming, setRenaming] = useState(false),
     [name, setName] = useState(''),
     [menu, setMenu] = useState(false);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [syncDialog, setSyncDialog] = useState(false);
+  const [goalPanel, setGoalPanel] = useState(false),
+    [goalObjective, setGoalObjective] = useState(''),
+    [statusPanel, setStatusPanel] = useState(false);
+  const [cliPanel, setCliPanel] = useState<{ threadId: string; command: string } | null>(null);
+  const [inspectorTab, setInspectorTab] = useState<{ tab: 'files' | 'changes'; revision: number }>({
+    tab: 'files',
+    revision: 0,
+  });
+  const [drafts, setDrafts] = useState<Record<string, string>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('codex-desk:drafts') || '{}');
+      return Object.fromEntries(
+        Object.entries(saved).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+      );
+    } catch {
+      return {};
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('codex-desk:drafts', JSON.stringify(drafts));
+    } catch {
+      /* A full store must not block typing. */
+    }
+  }, [drafts]);
   const draftKey = threadId || `new:${projectId}`,
     draft = drafts[draftKey] ?? '';
   const inputRef = useRef<HTMLTextAreaElement>(null),
@@ -77,6 +106,68 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
     ? threadTitle(thread, t('新会话', 'New conversation'))
     : t('新会话', 'New conversation');
   const setDraft = (value: string) => setDrafts((old) => ({ ...old, [draftKey]: value }));
+
+  async function runCommand(name: string, args: string): Promise<boolean> {
+    if (name === 'goal') {
+      const control = args.toLowerCase();
+      if (threadId && control === 'pause') await desk.setGoal({ status: 'paused' });
+      else if (threadId && control === 'resume') await desk.setGoal({ status: 'active' });
+      else if (threadId && control === 'clear') await desk.clearGoal();
+      else {
+        setGoalObjective(control === 'edit' ? '' : args);
+        setGoalPanel(true);
+      }
+      return true;
+    }
+    if ((name === 'status' || name === 'pwd') && !args) {
+      setStatusPanel(true);
+      return true;
+    }
+    if ((name === 'new' || name === 'clear') && !args) {
+      desk.newThread();
+      return true;
+    }
+    if (name === 'resume' && !args) {
+      setSidebar(true);
+      desk.setArchived(false);
+      desk.selectProject('');
+      setTimeout(() => searchRef.current?.focus(), 0);
+      return true;
+    }
+    if (name === 'rename' && threadId) {
+      if (args) await desk.rename(threadId, args);
+      else {
+        setName(title);
+        setRenaming(true);
+      }
+      return true;
+    }
+    if (name === 'archive' && threadId && !args) {
+      await desk.archive(threadId);
+      return true;
+    }
+    if (name === 'fork' && threadId && !args) {
+      await desk.fork(threadId);
+      return true;
+    }
+    if (name === 'compact' && threadId && !args) {
+      await request('thread.compact', { threadId });
+      return true;
+    }
+    if ((name === 'diff' || name === 'mention') && project && !args) {
+      setInspectorTab((old) => ({ tab: name === 'diff' ? 'changes' : 'files', revision: old.revision + 1 }));
+      setInspector(true);
+      return true;
+    }
+    if (thread?.syncState === 'external') {
+      setSyncDialog(true);
+      return false;
+    }
+    const id = await desk.ensureThread();
+    if (!threadId && draft && !draft.startsWith('/')) setDrafts((old) => ({ ...old, [id]: draft }));
+    setCliPanel({ threadId: id, command: `/${name}${args ? ' ' + args : ''}` });
+    return true;
+  }
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -390,11 +481,33 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
                   <PanelLeftOpen size={18} />
                 </button>
               )}
-              <span className="breadcrumb-project">{project?.name ?? t('工作空间', 'Workspace')}</span>
+              <span className="breadcrumb-project">
+                {project?.name ??
+                  (threadId ? t('工作空间', 'Workspace') : t('默认工作区', 'Default workspace'))}
+              </span>
               <span className="breadcrumb-slash">/</span>
               <strong title={title}>{title}</strong>
             </div>
             <div className="conversation-actions">
+              {thread?.goal && (
+                <GoalBadge
+                  goal={thread.goal}
+                  onClick={() => {
+                    setGoalObjective('');
+                    setGoalPanel(true);
+                  }}
+                />
+              )}
+              {thread && !desk.archived && (
+                <button
+                  className="text-button sync-terminal-button"
+                  onClick={() => setSyncDialog(true)}
+                  title={t('在终端同步打开', 'Open synced terminal')}
+                >
+                  <Terminal size={15} />
+                  {t('CLI 同步', 'CLI sync')}
+                </button>
+              )}
               {thread && !project && (
                 <button
                   className="text-button"
@@ -469,6 +582,24 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
               )}
             </div>
           </div>
+          {thread?.syncState === 'external' && !desk.archived && (
+            <div className="sync-banner" role="status">
+              <div>
+                <strong>
+                  {t('此会话仍在独立 CLI 中打开', 'This conversation is open in a standalone CLI')}
+                </strong>
+                <p>
+                  {t(
+                    '退出原 CLI 后，Desk 会自动接入同一会话。使用同步终端即可在两边继续，历史与草稿会保留。',
+                    'After you exit the original CLI, Desk reconnects to the same conversation. Use a synced terminal to continue in both interfaces; history and drafts are preserved.',
+                  )}
+                </p>
+              </div>
+              <button className="secondary-button" onClick={() => setSyncDialog(true)}>
+                {t('连接同一会话', 'Connect this conversation')}
+              </button>
+            </div>
+          )}
           {desk.error && (
             <div className="error-banner" role="alert">
               <span>{desk.error}</span>
@@ -525,8 +656,8 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
                         `Start with ${project.name}. Take your next idea a little further.`,
                       )
                     : t(
-                        '打开一个项目，给 Codex 一个清晰的方向。',
-                        'Open a project. Give Codex a direction to work in.',
+                        '直接描述任务，即可在默认工作区开始。',
+                        'Describe a task to start in your default workspace.',
                       )}
                 </p>
                 {!project && (
@@ -609,11 +740,15 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
             models={boot.models}
             initialModel={thread?.model}
             initialEffort={thread?.reasoningEffort}
+            initialAccess={thread?.permissionMode}
+            initialMode={thread?.collaborationMode}
+            onCommand={runCommand}
             project={project}
             connected={ready}
             sending={desk.sending}
             running={running}
             archived={desk.archived && !!threadId}
+            blocked={thread?.syncState === 'external'}
             onSend={desk.send}
             draft={draft}
             onDraft={setDraft}
@@ -639,7 +774,11 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
                   `· ${Math.round((desk.usage.context / desk.usage.limit) * 100)}% ${t('上下文', 'context')}`}
               </span>
             )}
-            <span className="statusbar-right">{t('由 Codex CLI 驱动', 'Powered by Codex CLI')}</span>
+            <span className="statusbar-right">
+              {thread?.syncState === 'live'
+                ? t('CLI 与 Desk 实时同步', 'CLI and Desk · Live sync')
+                : t('由 Codex CLI 驱动', 'Powered by Codex CLI')}
+            </span>
           </footer>
         </main>
         {inspector && (
@@ -652,6 +791,7 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
             />
             <Inspector
               project={project}
+              requestedTab={inspectorTab}
               refreshKey={`${threadId}:${thread?.updatedAt}:${running}`}
               onClose={() => setInspector(false)}
               onError={desk.fail}
@@ -672,6 +812,31 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
           onError={desk.fail}
         />
       )}
+      {syncDialog && threadId && (
+        <SyncDialog
+          threadId={threadId}
+          external={thread?.syncState === 'external'}
+          onClose={() => setSyncDialog(false)}
+          onError={desk.fail}
+        />
+      )}
+      {goalPanel && (
+        <GoalPanel
+          goal={thread?.goal}
+          initialObjective={goalObjective}
+          disabled={!ready || thread?.syncState === 'external' || desk.archived}
+          onSave={desk.setGoal}
+          onClear={desk.clearGoal}
+          onClose={() => {
+            setGoalPanel(false);
+            setGoalObjective('');
+          }}
+        />
+      )}
+      {statusPanel && (
+        <StatusPanel boot={boot} thread={thread} usage={desk.usage} onClose={() => setStatusPanel(false)} />
+      )}
+      {cliPanel && <CliTerminal {...cliPanel} onClose={() => setCliPanel(null)} />}
       {renaming && (
         <Dialog title={t('重命名会话', 'Rename conversation')} onClose={() => setRenaming(false)}>
           <form

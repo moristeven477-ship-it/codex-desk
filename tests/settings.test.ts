@@ -23,6 +23,7 @@ test('independent preference edits and thread selection preserve language and CL
       theme: 'light',
       binaryPath: '/custom/bin/codex',
       codexHome: '',
+      defaultWorkspace: '',
       lastProjectId: 'project',
       lastThreadId: 'thread',
     });

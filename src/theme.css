@@ -25,6 +25,7 @@
   --accent: #b8dfc4;
   --on-accent: #172a1e;
   --accent-bg: #b8dfc40b;
+  --accent-soft: #24332b;
   --accent-dim: #657f6c;
   --danger: #ed9b9e;
   --danger-bg: #c6586813;
@@ -61,6 +62,7 @@
   --accent: #397c4e;
   --on-accent: #ffffff;
   --accent-bg: #39804e0b;
+  --accent-soft: #e6f4ea;
   --accent-dim: #86ac8c;
   --danger: #b84754;
   --danger-bg: #c658680b;

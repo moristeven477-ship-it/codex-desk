@@ -1,5 +1,6 @@
 import { build } from 'esbuild';
 import './notices.mjs';
+import { copyFile } from 'node:fs/promises';
 await build({
   entryPoints: ['electron/main.ts', 'electron/preload.ts'],
   bundle: true,
@@ -11,3 +12,4 @@ await build({
   external: ['electron'],
   sourcemap: false,
 });
+await copyFile('electron/pty-bridge.py', 'dist-electron/pty-bridge.py');

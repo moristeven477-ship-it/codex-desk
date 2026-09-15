@@ -26,7 +26,7 @@ function eventWhere(codex: CodexProcess, predicate: (e: CodexEvent) => boolean) 
   });
 }
 test('real subprocess framing, concurrent responses, malformed input, stop and restart', async () => {
-  const codex = new CodexProcess(500);
+  const codex = new CodexProcess(500, 'stdio');
   try {
     await Promise.all([
       codex.start({ binaryPath: binary, codexHome: '' }),
@@ -51,7 +51,7 @@ test('real subprocess framing, concurrent responses, malformed input, stop and r
   }
 });
 test('a crashed CLI rejects requests and reconnects with a fresh process', async () => {
-  const codex = new CodexProcess(2000);
+  const codex = new CodexProcess(2000, 'stdio');
   try {
     await codex.start({ binaryPath: binary, codexHome: '' });
     await assert.rejects(codex.request('test.exit'), /exited/);
@@ -64,7 +64,7 @@ test('a crashed CLI rejects requests and reconnects with a fresh process', async
 });
 test('service approval lifecycle, streamed output, unknown operation rejection and persistence', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'desk-service-'));
-  const service = new DeskService(directory);
+  const service = new DeskService(directory, new CodexProcess(60_000, 'stdio'));
   try {
     await service.init();
     await service.handle('settings.update', { binaryPath: binary });
@@ -97,7 +97,7 @@ test('service approval lifecycle, streamed output, unknown operation rejection a
       service.handle('turn.start', { threadId: thread.id, images: ['/unpicked/private.png'] }),
       /attachment picker/,
     );
-    const next = new DeskService(directory);
+    const next = new DeskService(directory, new CodexProcess(60_000, 'stdio'));
     await next.init();
     assert.equal(next.store.state.projects.length, 1);
   } finally {

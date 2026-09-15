@@ -6,6 +6,7 @@ import type { AppState } from '../src/shared/types';
 export const settingsSchema = z.object({
   binaryPath: z.string().max(4096).default(''),
   codexHome: z.string().max(4096).default(''),
+  defaultWorkspace: z.string().max(4096).default(''),
   locale: z.enum(['zh', 'en']).default('zh'),
   theme: z.enum(['dark', 'light']).default('dark'),
   lastProjectId: z.string().default(''),
@@ -15,6 +16,7 @@ export const settingsPatchSchema = z
   .object({
     binaryPath: settingsSchema.shape.binaryPath.removeDefault(),
     codexHome: settingsSchema.shape.codexHome.removeDefault(),
+    defaultWorkspace: settingsSchema.shape.defaultWorkspace.removeDefault(),
     locale: settingsSchema.shape.locale.removeDefault(),
     theme: settingsSchema.shape.theme.removeDefault(),
     lastProjectId: settingsSchema.shape.lastProjectId.removeDefault(),
@@ -25,6 +27,7 @@ const schema = z.object({
   settings: settingsSchema.default({
     binaryPath: '',
     codexHome: '',
+    defaultWorkspace: '',
     locale: 'zh',
     theme: 'dark',
     lastProjectId: '',

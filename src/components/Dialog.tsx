@@ -6,11 +6,13 @@ export function Dialog({
   onClose,
   children,
   wide = false,
+  escapeCloses = true,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
+  escapeCloses?: boolean;
 }) {
   const t = useT(),
     ref = useRef<HTMLDivElement>(null),
@@ -26,7 +28,8 @@ export function Dialog({
       );
     nodes()[0]?.focus();
     function key(event: KeyboardEvent) {
-      if (event.key === 'Escape') close.current();
+      if (event.defaultPrevented) return;
+      if (event.key === 'Escape' && escapeCloses) close.current();
       if (event.key === 'Tab') {
         const list = nodes(),
           first = list[0],
@@ -45,7 +48,7 @@ export function Dialog({
       document.removeEventListener('keydown', key);
       original?.focus();
     };
-  }, []);
+  }, [escapeCloses]);
   return (
     <div
       className="dialog-backdrop"

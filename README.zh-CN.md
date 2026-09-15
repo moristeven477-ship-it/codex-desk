@@ -21,6 +21,10 @@ _截图使用测试项目，应用实际连接本机 Codex CLI。_
 - 选择模型、推理强度、权限模式；使用原生文件选择器添加图片。
 - 浏览项目文件，查看 Git 暂存、未暂存和未跟踪更改。
 - 中英文切换，深浅色主题，侧栏与文件面板调整。
+- 无须先选项目，直接在默认工作区开始；文字草稿跨重启保存。
+- CLI 与 Desk 共用同一会话，实时同步消息、审批、设置和目标。
+- 完整 `/` 命令菜单、内置真实 CLI、右上角目标面板。
+- 带说明与选中状态的模型弹窗，以及渐变赛博朋克樱花 SVG 图标。
 
 ## 安装
 
@@ -42,7 +46,7 @@ codex login
 从 [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest) 下载 `.deb`：
 
 ```bash
-sudo apt install ./codex-desk-0.1.0-amd64.deb
+sudo apt install ./codex-desk-0.2.0-amd64.deb
 ```
 
 安装后在 Ubuntu 应用菜单中打开 **Codex Desk**，或运行 `codex-desk`。
@@ -50,21 +54,21 @@ sudo apt install ./codex-desk-0.1.0-amd64.deb
 也可下载便携 AppImage：
 
 ```bash
-chmod +x codex-desk-0.1.0-x86_64.AppImage
-./codex-desk-0.1.0-x86_64.AppImage
+chmod +x codex-desk-0.2.0-x86_64.AppImage
+./codex-desk-0.2.0-x86_64.AppImage
 ```
 
 没有 FUSE 时：
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.1.0-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.0-x86_64.AppImage
 ```
 
 Ubuntu 24.04 优先使用 `.deb`，安装器包含 Electron 的 AppArmor 集成。遇到沙箱错误时参考[故障排查](docs/TROUBLESHOOTING.md)，不要通过关闭沙箱解决。
 
 ## 开始使用
 
-1. 在左侧打开一个项目文件夹。
+1. 直接输入任务，或在左侧打开项目。未选项目时，应用自动使用 `~/Codex/workspace`，可在「设置 → 通用 → 默认工作区」更改。
 2. 选择历史会话，或新建会话。
 3. 在输入框下选择模型、推理强度和权限模式。
 4. 描述任务，查看执行进度，并在需要时回答或授权。
@@ -84,16 +88,39 @@ Ubuntu 24.04 优先使用 `.deb`，安装器包含 Electron 的 AppArmor 集成�
 
 ## 数据与边界
 
-应用直接通过 stdio 连接本机 `codex app-server`，不启动 HTTP 服务，不提供云中转，不收集应用遥测。
+应用通过本机 Unix socket 上的 WebSocket 连接官方 `codex app-server`，不监听 TCP 端口、不提供云中转、不收集应用遥测。服务不存在时自动启动；npm 版无法使用官方 daemon 安装入口时，会启动独立于 Desk 生命周期的官方 Unix 监听进程。
 
 - 会话与登录凭证仍由 Codex 管理，通常位于 `~/.codex`。
 - 项目书签与偏好通常位于 `~/.config/Codex Desk/state.json`。
+- 文字草稿保存在同一应用数据目录下的本地存储中。
 - 应用不另行复制 API Key 或 Codex 登录文件；模型仍使用原有订阅额度或 API 计费。
 - 文件面板是只读预览；文件编辑由 Codex 完成。移除书签不会删除项目文件。
-- 可以恢复已有 CLI 历史，但不会自动接管另一个正在运行的 CLI 进程输出。请先结束原 CLI 的任务，再在这里继续同一会话。
-- 退出应用会关闭由它启动的 Codex 进程；仍有运行任务时会提示。
+- 实时同步要求 CLI 与 Desk 连接同一共享服务，独立 CLI 需要按下方说明重新连接一次。
+- 关闭 Desk 会断开它的客户端，共享服务与运行任务继续保留。
 - 本版不含远程访问、自动更新、定时任务或其他模型代理的接入。
 - MCP 表单暂用 JSON 字段回答；尚未实现的客户端协议请求会明确拒绝。
+
+## CLI 与 Desk 双向同步
+
+打开会话，点击「CLI 同步」，或从 `/` 菜单打开内置终端。两边使用同一个会话 ID：
+
+```bash
+codex --remote unix:// resume 会话ID
+```
+
+有自定义 Codex 路径或 `CODEX_HOME` 时，直接复制「CLI 同步」中的完整命令。订阅会话的消息与目标实时推送，会话列表每 3 秒刷新。
+
+**已有独立 CLI 的会话：**先完成当前任务并退出原 CLI 一次。Desk 保留原 ID、历史和草稿，并在写入占用解除后自动连接。此后用「CLI 同步」重新打开，就能在两边继续同一对话。不能热接管仍由独立 CLI 占用的会话，也不会自动分叉成另一份。
+
+## 完整 `/` 命令与目标
+
+输入框附件按钮旁的 **/** 可打开搜索菜单，也可以直接在输入框输入命令。菜单收录 CLI 0.154.0 的全部 **60 条命令定义及别名**。`/goal`、`/plan`、`/status`、模型、权限和常用会话操作使用图形界面；其余命令打开内置真实 CLI，在出现输入提示后点击「填入命令」，按 Enter 执行。CLI 自带的选择器与确认交互均可使用，也能直接输入自定义或新版本增加的命令。
+
+平台、调试构建或实验功能限定的命令标记为「条件可用」，实际由本机 Codex 判断；收录到菜单不会强行启用 Ubuntu 不支持的功能。另见[命令清单](docs/COMMANDS.md)。
+
+会话有目标时，右上角显示目标状态。点击后可查看目标内容、token 预算、用量与累计时间，并编辑、暂停、继续或清除目标。预算可不填，CLI 中的目标变化会同步更新。`/plan` 为下一条任务选择真正的 Codex 计划模式，点击「退出计划」可返回正常执行。
+
+内置终端使用 Ubuntu 自带的 `python3` PTY 与 xterm.js，运行你安装的官方 Codex。
 
 ## 从源码运行
 
@@ -116,6 +143,8 @@ npm run package:linux
 首次运行浏览器测试需要 `npx playwright install chromium`，或本机已有 Google Chrome。
 
 可选真实 CLI 检查：`npm run test:live` 只读取连接、模型与历史；加上 `-- --turn` 会创建一次隔离的只读测试对话，使用你的额度，并在结束后归档该测试会话。
+
+`npx tsx scripts/live-sync.ts --turns` 验证真实 TUI 与 Desk 的双向消息和目标同步，会使用少量模型额度。
 
 ## 开源
 

@@ -3,7 +3,11 @@ import { mkdtemp, mkdir, writeFile, chmod, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { DeskService } from '../../electron/service';
-import type { CodexEvent, JsonObject } from '../../src/shared/types';
+import { CodexProcess } from '../../electron/codex';
+// @ts-expect-error The fixture is also used by native JavaScript smoke checks.
+import { sharedFixture } from '../fixtures/shared-server.mjs';
+import type { CodexEvent, JsonObject, Thread } from '../../src/shared/types';
+import { slashCommands } from '../../src/shared/commands';
 
 const test = base.extend<{ setup: DeskService }>({
   setup: [
@@ -19,10 +23,14 @@ const test = base.extend<{ setup: DeskService }>({
       await writeFile(path.join(project, 'package.json'), '{"name":"atlas-workspace","version":"1.0.0"}\n');
       const binary = path.resolve('tests/fixtures/fake-codex.mjs');
       await chmod(binary, 0o755);
-      process.env.CODEX_DESK_FIXTURE_ROOT = project;
+      const shared = await sharedFixture(root, project);
       const service = new DeskService(path.join(root, 'data'));
       await service.init();
-      await service.handle('settings.update', { binaryPath: binary });
+      await service.handle('settings.update', {
+        binaryPath: binary,
+        codexHome: shared.home,
+        defaultWorkspace: path.join(root, 'default-workspace'),
+      });
       await service.connect();
       const p = (await service.handle('project.add', { path: project })) as { id: string };
       await service.handle('settings.update', { lastProjectId: p.id });
@@ -43,6 +51,7 @@ const test = base.extend<{ setup: DeskService }>({
           pickDirectory: () => w.__deskPick(),
           pickImages: async () => [],
           openExternal: async () => {},
+          openTerminal: async () => {},
           windowAction: async () => {},
         };
       });
@@ -57,9 +66,10 @@ const test = base.extend<{ setup: DeskService }>({
       await expect(page.getByText('Codex 已连接', { exact: true })).toBeVisible();
       await use(service);
       service.off('event', forward);
+      service.terminal.close();
       await service.codex.stop();
+      await shared.close();
       await rm(root, { recursive: true, force: true });
-      delete process.env.CODEX_DESK_FIXTURE_ROOT;
       expect(errors).toEqual([]);
     },
     { auto: true },
@@ -146,4 +156,103 @@ test('a small Ubuntu window keeps the composer and inspector usable', async ({ p
   await page.getByRole('button', { name: '发送消息', exact: true }).click();
   await expect(page.locator('.markdown')).toContainText('Your local Codex conversation is working.');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('first message starts in the default workspace and drafts survive reload', async ({ page, setup }) => {
+  await setup.handle('settings.update', { lastProjectId: '', lastThreadId: '' });
+  await page.reload();
+  const composer = page.getByRole('textbox', { name: '发送给 Codex 的消息' });
+  await composer.fill('A draft in the default workspace');
+  await page.reload();
+  await expect(composer).toHaveValue('A draft in the default workspace');
+  await page.getByRole('button', { name: '发送消息', exact: true }).click();
+  await expect(page.locator('.markdown')).toContainText('Your local Codex conversation is working.');
+  const params = await setup.codex.request<{ threadId: string }>('test.lastTurn');
+  const thread = (await setup.handle('thread.read', { threadId: params.threadId })) as Thread;
+  expect(thread.cwd).toBe(setup.defaultWorkspace);
+  await expect(composer).toHaveValue('');
+});
+
+test('model popup has descriptions, effort tabs and keyboard selection', async ({ page }) => {
+  await page.getByRole('combobox', { name: '模型', exact: true }).click();
+  await expect(page.getByRole('option', { name: /Codex · Fast fixture/ })).toContainText('Quick answers');
+  await page.screenshot({ path: 'test-results/model-picker-dark.png', animations: 'disabled' });
+  await page.getByRole('listbox', { name: '模型', exact: true }).press('ArrowDown');
+  await page.getByRole('listbox', { name: '模型', exact: true }).press('Enter');
+  await expect(page.getByRole('combobox', { name: '模型', exact: true })).toContainText('Fast fixture');
+  await page.getByRole('combobox', { name: '模型', exact: true }).click();
+  await page.getByRole('tab', { name: '推理强度' }).click();
+  await page.getByRole('option', { name: /medium/ }).click();
+  await expect(page.getByRole('combobox', { name: '推理强度', exact: true })).toContainText('medium');
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'light';
+  });
+  await page.getByRole('combobox', { name: '模型', exact: true }).click();
+  await page.screenshot({ path: 'test-results/model-picker-light.png', animations: 'disabled' });
+});
+
+test('all slash commands, plan mode, goal controls and CLI goal notifications', async ({ page, setup }) => {
+  await page.getByRole('button', { name: 'Codex 命令', exact: true }).click();
+  await expect(page.getByRole('listbox', { name: '命令列表' }).getByRole('option')).toHaveCount(
+    slashCommands.length,
+  );
+  await page.screenshot({ path: 'test-results/commands-zh.png', animations: 'disabled' });
+  await page.getByRole('textbox', { name: '搜索命令' }).fill('goal');
+  await page.getByRole('option', { name: /\/goal/ }).click();
+  await page.getByRole('textbox', { name: '目标内容' }).fill('Deliver the Atlas workspace');
+  await page.getByRole('spinbutton', { name: 'Token 预算（可选）' }).fill('12000');
+  await page.getByRole('button', { name: '开始目标', exact: true }).click();
+  await expect(page.locator('.goal-badge')).toContainText('正在追求目标');
+  await page.getByRole('button', { name: '暂停', exact: true }).click();
+  await expect(page.locator('.goal-badge')).toContainText('目标已暂停');
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  const id = setup.store.state.settings.lastThreadId;
+  await setup.codex.request('thread/goal/set', {
+    threadId: id,
+    status: 'active',
+    objective: 'Goal updated from CLI',
+  });
+  await expect(page.locator('.goal-badge')).toContainText('正在追求目标');
+  await page.locator('.goal-badge').click();
+  await expect(page.locator('.goal-objective')).toHaveText('Goal updated from CLI');
+  await page.screenshot({ path: 'test-results/goal-panel.png', animations: 'disabled' });
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  const composer = page.getByRole('textbox', { name: '发送给 Codex 的消息' });
+  await composer.fill('/plan Draft the plan');
+  await composer.press('Enter');
+  await expect(page.locator('.markdown')).toContainText('Your local Codex conversation is working.');
+  expect(
+    (await setup.codex.request<{ collaborationMode: { mode: string } }>('test.lastTurn')).collaborationMode
+      .mode,
+  ).toBe('plan');
+  await composer.fill('/status');
+  await composer.press('Enter');
+  await expect(page.getByRole('dialog', { name: '会话状态' })).toContainText(id);
+});
+
+test('legacy writer banner preserves drafts and reconnects automatically', async ({ page, setup }) => {
+  await setup.codex.request('test.lock', { threadId: 'fixture-history', locked: true });
+  await page.getByRole('button', { name: /Understand the project/ }).click();
+  await expect(page.locator('.sync-banner')).toContainText('独立 CLI');
+  const composer = page.getByRole('textbox', { name: '发送给 Codex 的消息' });
+  await composer.fill('Keep this unsent draft');
+  await expect(page.getByRole('button', { name: '发送消息', exact: true })).toBeDisabled();
+  await setup.codex.request('test.lock', { threadId: 'fixture-history', locked: false });
+  await expect(page.locator('.sync-banner')).toHaveCount(0, { timeout: 6000 });
+  await expect(composer).toHaveValue('Keep this unsent draft');
+  await expect(page.getByRole('button', { name: '发送消息', exact: true })).toBeEnabled();
+});
+
+test('CLI-only commands open an interactive embedded terminal', async ({ page }) => {
+  await page.getByRole('button', { name: /Understand the project/ }).click();
+  await page.getByRole('button', { name: 'Codex 命令', exact: true }).click();
+  await page.getByRole('textbox', { name: '搜索命令' }).fill('plugins');
+  await page.getByRole('option', { name: /\/plugins/ }).click();
+  await expect(page.getByRole('dialog', { name: 'Codex CLI · 同一会话' })).toBeVisible();
+  await expect(page.locator('.xterm-screen')).toContainText('CODEX_CLI_FIXTURE_READY');
+  await page.getByRole('button', { name: '填入命令' }).click();
+  await page.locator('.xterm-helper-textarea').press('Enter');
+  await expect(page.locator('.xterm-screen')).toContainText('CLI executed: /plugins');
+  await page.locator('.xterm-helper-textarea').press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Codex CLI · 同一会话' })).toBeVisible();
 });

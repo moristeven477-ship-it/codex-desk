@@ -1,6 +1,18 @@
 export type JsonObject = Record<string, unknown>;
 export type Locale = 'zh' | 'en';
 export type AccessMode = 'read-only' | 'workspace-write' | 'danger-full-access';
+export type CollaborationMode = 'default' | 'plan';
+export type GoalStatus = 'active' | 'paused' | 'blocked' | 'usageLimited' | 'budgetLimited' | 'complete';
+export interface ThreadGoal {
+  threadId: string;
+  objective: string;
+  status: GoalStatus;
+  tokenBudget: number | null;
+  tokensUsed: number;
+  timeUsedSeconds: number;
+  createdAt: number;
+  updatedAt: number;
+}
 export interface Project {
   id: string;
   name: string;
@@ -10,6 +22,7 @@ export interface Project {
 export interface Settings {
   binaryPath: string;
   codexHome: string;
+  defaultWorkspace: string;
   locale: Locale;
   theme: 'dark' | 'light';
   lastProjectId: string;
@@ -26,6 +39,8 @@ export interface Connection {
   codexHome?: string;
   error?: string;
   pid?: number;
+  shared?: boolean;
+  endpoint?: string;
 }
 export interface Input {
   type: string;
@@ -78,6 +93,11 @@ export interface Thread {
   turns: Turn[];
   historyMode?: string;
   nextTurnsCursor?: string | null;
+  syncState?: 'live' | 'external';
+  permissionMode?: AccessMode;
+  collaborationMode?: CollaborationMode;
+  goal?: ThreadGoal | null;
+  gitInfo?: { sha?: string | null; branch?: string | null; originUrl?: string | null } | null;
 }
 export interface Model {
   id: string;
@@ -102,13 +122,16 @@ export interface Question {
   options?: { label: string; description: string }[] | null;
 }
 export interface CodexEvent {
-  kind: 'notification' | 'request' | 'connection' | 'resolved' | 'notice';
+  kind: 'notification' | 'request' | 'connection' | 'resolved' | 'notice' | 'terminal';
   method?: string;
   params?: JsonObject;
   request?: Approval;
   connection?: Connection;
   id?: string | number;
   message?: string;
+  terminalId?: string;
+  data?: string;
+  exitCode?: number;
 }
 export interface Bootstrap extends AppState {
   connection: Connection;
@@ -116,6 +139,7 @@ export interface Bootstrap extends AppState {
   account: { type: string; email?: string; planType?: string } | null;
   approvals: Approval[];
   appVersion: string;
+  defaultWorkspace: string;
 }
 export interface FileEntry {
   name: string;
@@ -147,6 +171,7 @@ export interface NativeBridge {
   pickDirectory(): Promise<string | null>;
   pickImages(): Promise<{ path: string; name: string; preview: string }[]>;
   openExternal(url: string): Promise<void>;
+  openTerminal(threadId: string): Promise<void>;
   windowAction(action: 'minimize' | 'maximize' | 'close'): Promise<void>;
 }
 declare global {

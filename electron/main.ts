@@ -3,10 +3,10 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readFile, stat } from 'node:fs/promises';
 import { DeskService } from './service';
+import { openTerminal, type TerminalCommand } from './terminal';
 
 let window: BrowserWindow | null = null;
 let service: DeskService;
-let quitting = false;
 const devURL = !app.isPackaged ? process.env.CODEX_DESK_DEV_URL : undefined;
 const rendererFile = path.join(__dirname, '../dist/index.html');
 const allowedURL = devURL ?? pathToFileURL(rendererFile).href;
@@ -97,6 +97,11 @@ else {
           return { ok: false, error: error instanceof Error ? error.message : String(error) };
         }
       });
+      ipcMain.handle('desk:open-terminal', async (event, threadId: unknown) => {
+        trusted(event);
+        const command = (await service.handle('thread.terminalCommand', { threadId })) as TerminalCommand;
+        await openTerminal(command);
+      });
       ipcMain.handle('desk:pick-directory', async (event) => {
         trusted(event);
         const result = await dialog.showOpenDialog(window!, {
@@ -145,33 +150,9 @@ else {
         } else if (action === 'close') window?.close();
       });
       window.once('ready-to-show', () => window?.show());
-      window.on('close', (event) => {
-        if (quitting || !service.runningCount) return;
-        event.preventDefault();
-        void dialog
-          .showMessageBox(window!, {
-            type: 'question',
-            buttons: [t('继续工作', 'Keep working'), t('停止任务并退出', 'Stop tasks and quit')],
-            defaultId: 0,
-            cancelId: 0,
-            title: t('Codex 正在工作', 'Codex is working'),
-            message: t(
-              `仍有 ${service.runningCount} 个会话正在运行。`,
-              `${service.runningCount} conversation(s) are still running.`,
-            ),
-            detail: t(
-              '退出将关闭本应用启动的 Codex 进程。',
-              'Quitting closes the Codex process started by this app.',
-            ),
-          })
-          .then(({ response }) => {
-            if (response === 1) {
-              quitting = true;
-              app.quit();
-            }
-          });
-      });
+      // Closing Desk disconnects its clients. The shared server keeps running.
       window.on('closed', () => {
+        service.terminal.close();
         window = null;
       });
       if (devURL) await window.loadURL(devURL);
@@ -185,7 +166,6 @@ else {
   app.on('before-quit', (event) => {
     if (!service || service.codex.connection.phase === 'stopped') return;
     event.preventDefault();
-    quitting = true;
     void service.codex.stop().then(() => app.quit());
   });
 }

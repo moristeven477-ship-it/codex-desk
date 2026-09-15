@@ -1,11 +1,17 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { homedir } from 'node:os';
+import { mkdir } from 'node:fs/promises';
 import { z } from 'zod';
 import { CodexProcess, RpcError } from './codex';
 import { Store, settingsPatchSchema } from './store';
 import { directoryPath, gitDiff, gitStatus, listFiles, previewFile } from './workspace';
-import type { Bootstrap, JsonObject, Model, Thread, Turn } from '../src/shared/types';
+import type { Bootstrap, JsonObject, Model, Thread, ThreadGoal, Turn } from '../src/shared/types';
+import { CodexTerminal } from './pty';
+import type { TerminalCommand } from './terminal';
+import { APP_VERSION } from '../src/shared/version';
+import { isWriterConflict } from '../src/shared/errors';
 
 const text = z.string().min(1).max(4096);
 const threadArgs = z.object({ threadId: text });
@@ -17,28 +23,58 @@ const turnArgs = z.object({
   effort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']).optional(),
   access,
   images: z.array(z.string().max(4096)).max(8).default([]),
+  collaborationMode: z.enum(['default', 'plan']).optional(),
 });
 
 export class DeskService extends EventEmitter {
   readonly codex: CodexProcess;
   readonly store: Store;
+  readonly terminal: CodexTerminal;
   private models: Model[] = [];
   private account: Bootstrap['account'] = null;
   private loaded = new Set<string>();
+  private resuming = new Map<string, Promise<void>>();
+  private runtime = new Map<string, Partial<Thread>>();
   private activeTurns = new Map<string, string>();
   private imagePaths = new Set<string>();
+  private pristine = new Set<string>();
 
   constructor(directory: string, codex = new CodexProcess()) {
     super();
     this.store = new Store(directory);
     this.codex = codex;
+    this.terminal = new CodexTerminal((event) => this.emit('event', event));
     codex.on('event', (event) => {
       if (event.kind === 'connection' && event.connection?.phase !== 'ready') {
         this.loaded.clear();
+        this.resuming.clear();
+        this.runtime.clear();
         this.activeTurns.clear();
       }
-      if (event.method === 'turn/started') this.activeTurns.set(event.params.threadId, event.params.turn.id);
+      if (event.method === 'turn/started') {
+        this.activeTurns.set(event.params.threadId, event.params.turn.id);
+        this.pristine.delete(event.params.threadId);
+      }
       if (event.method === 'turn/completed') this.activeTurns.delete(event.params.threadId);
+      if (event.method === 'thread/closed') {
+        this.loaded.delete(event.params.threadId);
+        this.activeTurns.delete(event.params.threadId);
+        this.runtime.delete(event.params.threadId);
+      }
+      if (event.method === 'thread/settings/updated') {
+        const settings = event.params.threadSettings;
+        this.runtime.set(event.params.threadId, {
+          model: settings.model,
+          reasoningEffort: settings.effort,
+          collaborationMode: settings.collaborationMode?.mode,
+          permissionMode:
+            settings.sandboxPolicy.type === 'readOnly'
+              ? 'read-only'
+              : settings.sandboxPolicy.type === 'dangerFullAccess'
+                ? 'danger-full-access'
+                : 'workspace-write',
+        });
+      }
       this.emit('event', event);
     });
   }
@@ -72,14 +108,47 @@ export class DeskService extends EventEmitter {
   }
   private async resume(threadId: string) {
     if (this.loaded.has(threadId)) return;
-    await this.codex.request('thread/resume', { threadId, excludeTurns: true });
-    this.loaded.add(threadId);
+    if (this.resuming.has(threadId)) return this.resuming.get(threadId);
+    const operation = (async () => {
+      const result = await this.codex.request<{
+        thread: Thread;
+        model?: string;
+        reasoningEffort?: string;
+        sandbox?: { type: string };
+      }>('thread/resume', { threadId, excludeTurns: true });
+      this.runtime.set(threadId, {
+        ...this.runtime.get(threadId),
+        ...(result.model ? { model: result.model } : {}),
+        ...(result.reasoningEffort ? { reasoningEffort: result.reasoningEffort } : {}),
+        ...(result.sandbox
+          ? {
+              permissionMode:
+                result.sandbox.type === 'readOnly'
+                  ? 'read-only'
+                  : result.sandbox.type === 'dangerFullAccess'
+                    ? 'danger-full-access'
+                    : 'workspace-write',
+            }
+          : {}),
+      });
+      this.loaded.add(threadId);
+    })();
+    this.resuming.set(threadId, operation);
+    try {
+      await operation;
+    } finally {
+      if (this.resuming.get(threadId) === operation) this.resuming.delete(threadId);
+    }
+  }
+  get defaultWorkspace() {
+    return this.store.state.settings.defaultWorkspace || path.join(homedir(), 'Codex', 'workspace');
   }
   private async history(threadId: string): Promise<Thread> {
     const { thread } = await this.codex.request<{ thread: Thread }>('thread/read', {
       threadId,
       includeTurns: false,
     });
+    if (this.pristine.has(threadId)) return { ...thread, turns: [] };
     try {
       const page = await this.codex.request<{ data: Turn[]; nextCursor: string | null }>(
         'thread/turns/list',
@@ -108,7 +177,8 @@ export class DeskService extends EventEmitter {
           models: this.models,
           account: this.account,
           approvals: [...this.codex.approvals.values()],
-          appVersion: '0.1.0',
+          appVersion: APP_VERSION,
+          defaultWorkspace: this.defaultWorkspace,
         } satisfies Bootstrap;
       case 'codex.connect': {
         if (this.codex.connection.phase === 'error') await this.codex.stop();
@@ -123,6 +193,8 @@ export class DeskService extends EventEmitter {
       }
       case 'settings.update': {
         const patch = settingsPatchSchema.parse(params);
+        if (patch.defaultWorkspace && !path.isAbsolute(patch.defaultWorkspace))
+          throw new Error('Use an absolute workspace path.');
         for (const key of ['binaryPath', 'codexHome'] as const) {
           if (patch[key] && !path.isAbsolute(patch[key])) throw new Error('Use an absolute path.');
           if (patch[key] !== undefined && patch[key] !== this.store.state.settings[key] && this.runningCount)
@@ -179,6 +251,102 @@ export class DeskService extends EventEmitter {
       }
       case 'thread.read':
         return this.history(threadArgs.parse(params).threadId);
+      case 'thread.open': {
+        const args = z.object({ threadId: text, archived: z.boolean().default(false) }).parse(params);
+        if (args.archived) return this.history(args.threadId);
+        try {
+          await this.resume(args.threadId);
+        } catch (error) {
+          if (!isWriterConflict(error)) throw error;
+          return { ...(await this.history(args.threadId)), syncState: 'external' } satisfies Thread;
+        }
+        const thread = {
+          ...(await this.history(args.threadId)),
+          ...this.runtime.get(args.threadId),
+          syncState: 'live' as const,
+        };
+        const active =
+          thread.status.type === 'active' && thread.turns.findLast((turn) => turn.status === 'inProgress');
+        if (active) this.activeTurns.set(thread.id, active.id);
+        return thread;
+      }
+      case 'thread.terminalCommand': {
+        const { thread } = await this.codex.request<{ thread: Thread }>('thread/read', {
+          ...threadArgs.parse(params),
+          includeTurns: false,
+        });
+        const binary = this.codex.connection.binary;
+        if (!binary) throw new Error('Connect Codex before opening a terminal.');
+        const args = ['--remote', 'unix://', 'resume', thread.id];
+        const codexHome = this.codex.connection.codexHome || homedir() + '/.codex';
+        const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
+        return {
+          binary,
+          args,
+          cwd: thread.cwd,
+          codexHome,
+          command: ['env', `CODEX_HOME=${codexHome}`, binary, ...args].map(quote).join(' '),
+        };
+      }
+      case 'terminal.start': {
+        const args = z
+          .object({
+            threadId: text,
+            cols: z.number().int().min(20).max(500),
+            rows: z.number().int().min(5).max(300),
+          })
+          .parse(params);
+        const command = (await this.handle('thread.terminalCommand', {
+          threadId: args.threadId,
+        })) as TerminalCommand;
+        return this.terminal.start(command, args.cols, args.rows);
+      }
+      case 'terminal.write': {
+        const args = z.object({ id: text, data: z.string().max(65536) }).parse(params);
+        this.terminal.send(args.id, { type: 'write', data: args.data });
+        return {};
+      }
+      case 'terminal.resize': {
+        const args = z
+          .object({
+            id: text,
+            cols: z.number().int().min(20).max(500),
+            rows: z.number().int().min(5).max(300),
+          })
+          .parse(params);
+        this.terminal.send(args.id, { type: 'resize', cols: args.cols, rows: args.rows });
+        return {};
+      }
+      case 'terminal.stop': {
+        this.terminal.stop(z.object({ id: text }).parse(params).id);
+        return {};
+      }
+      case 'goal.get':
+        return this.codex.request<{ goal: ThreadGoal | null }>('thread/goal/get', threadArgs.parse(params));
+      case 'goal.set': {
+        const args = z
+          .object({
+            threadId: text,
+            objective: z.string().trim().min(1).max(200_000).optional(),
+            status: z.enum(['active', 'paused']).optional(),
+            tokenBudget: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+          })
+          .parse(params);
+        await this.resume(args.threadId);
+        return this.codex.request('thread/goal/set', args);
+      }
+      case 'goal.clear': {
+        const args = threadArgs.parse(params);
+        await this.resume(args.threadId);
+        return this.codex.request('thread/goal/clear', args);
+      }
+      case 'thread.compact': {
+        const args = threadArgs.parse(params);
+        await this.resume(args.threadId);
+        if (this.activeTurns.has(args.threadId))
+          throw new Error('Wait for the running turn before compacting.');
+        return this.codex.request('thread/compact/start', args);
+      }
       case 'thread.older': {
         const args = z.object({ threadId: text, cursor: text }).parse(params);
         return this.codex.request('thread/turns/list', {
@@ -190,17 +358,36 @@ export class DeskService extends EventEmitter {
       }
       case 'thread.create': {
         const args = z
-          .object({ projectId: text, model: z.string().max(256).optional(), access })
+          .object({ projectId: text.optional(), model: z.string().max(256).optional(), access })
           .parse(params);
+        let project;
+        if (args.projectId) project = this.project(args.projectId);
+        else {
+          await mkdir(this.defaultWorkspace, { recursive: true });
+          project = (await this.handle('project.add', {
+            path: this.defaultWorkspace,
+            name: 'Codex Workspace',
+          })) as { id: string; path: string };
+        }
         const { thread } = await this.codex.request<{ thread: Thread }>('thread/start', {
-          cwd: this.project(args.projectId).path,
+          cwd: project.path,
+          ephemeral: false,
           ...(args.model ? { model: args.model } : {}),
           sandbox: args.access,
           approvalPolicy: 'on-request',
           approvalsReviewer: 'user',
         });
         this.loaded.add(thread.id);
-        return thread;
+        this.pristine.add(thread.id);
+        // Save the reported Git branch through Codex's metadata API. This
+        // materializes the empty thread before another client resumes its ID,
+        // without inserting a message, goal, or placeholder conversation name.
+        await this.codex.request('thread/metadata/update', {
+          threadId: thread.id,
+          gitInfo: { branch: thread.gitInfo?.branch ?? null },
+        });
+        await this.codex.request('thread/read', { threadId: thread.id, includeTurns: true });
+        return { ...thread, syncState: 'live' } satisfies Thread;
       }
       case 'thread.rename': {
         const args = z.object({ threadId: text, name: z.string().trim().min(1).max(200) }).parse(params);
@@ -222,9 +409,10 @@ export class DeskService extends EventEmitter {
         const { thread } = await this.codex.request<{ thread: Thread }>('thread/fork', {
           ...args,
           excludeTurns: true,
+          deferGoalContinuation: true,
         });
         this.loaded.add(thread.id);
-        return this.history(thread.id);
+        return { ...(await this.history(thread.id)), syncState: 'live' } satisfies Thread;
       }
       case 'turn.start': {
         const args = turnArgs.parse(params);
@@ -259,6 +447,21 @@ export class DeskService extends EventEmitter {
           approvalsReviewer: 'user',
           ...(args.model ? { model: args.model } : {}),
           ...(args.effort ? { effort: args.effort } : {}),
+          ...(args.collaborationMode
+            ? {
+                collaborationMode: {
+                  mode: args.collaborationMode,
+                  settings: {
+                    model:
+                      args.model ||
+                      this.runtime.get(args.threadId)?.model ||
+                      this.models.find((model) => model.isDefault)?.model,
+                    reasoning_effort: args.effort || null,
+                    developer_instructions: null,
+                  },
+                },
+              }
+            : {}),
         });
         // The protocol's turn/started notification is authoritative; it may precede this response.
         return result;

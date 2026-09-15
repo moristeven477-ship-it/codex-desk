@@ -1,1 +1,33 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" rx="120" fill="#202724"/><path d="M180 156h-42v200h42M332 156h42v200h-42M278 168l-44 176" fill="none" stroke="#bce7c7" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/><circle cx="358" cy="130" r="18" fill="#bce7c7"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <title>Codex Desk — Neon Sakura</title>
+  <defs>
+    <linearGradient id="night" x1="48" y1="20" x2="469" y2="508" gradientUnits="userSpaceOnUse"><stop stop-color="#19112F"/><stop offset=".53" stop-color="#100F23"/><stop offset="1" stop-color="#082B35"/></linearGradient>
+    <linearGradient id="rim" x1="49" y1="44" x2="467" y2="475" gradientUnits="userSpaceOnUse"><stop stop-color="#FF7DDD"/><stop offset=".46" stop-color="#744DD5" stop-opacity=".25"/><stop offset="1" stop-color="#48F6EB"/></linearGradient>
+    <linearGradient id="petal" x1="203" y1="105" x2="292" y2="254" gradientUnits="userSpaceOnUse"><stop stop-color="#FFD5F1"/><stop offset=".25" stop-color="#FF6BCD"/><stop offset=".65" stop-color="#B05FF0"/><stop offset="1" stop-color="#596EE8"/></linearGradient>
+    <linearGradient id="edge" x1="199" y1="105" x2="299" y2="256" gradientUnits="userSpaceOnUse"><stop stop-color="#FFC4EB"/><stop offset="1" stop-color="#52FCF0"/></linearGradient>
+    <radialGradient id="aura"><stop stop-color="#CB50EC" stop-opacity=".23"/><stop offset="1" stop-color="#A844D9" stop-opacity="0"/></radialGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="6"/></filter>
+    <path id="petal-shape" d="M256 262C235 236 195 199 193 153C191 115 214 91 241 102L256 123L271 102C298 91 321 115 319 153C317 199 277 236 256 262Z"/>
+  </defs>
+  <rect x="8" y="8" width="496" height="496" rx="112" fill="url(#night)"/>
+  <rect x="17" y="17" width="478" height="478" rx="103" stroke="url(#rim)" stroke-opacity=".68" stroke-width="2"/>
+  <circle cx="256" cy="257" r="225" fill="url(#aura)"/>
+  <g stroke="url(#rim)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity=".75">
+    <path d="M51 194V142L86 107H120M392 79H413L449 115V168M456 326V383L419 420H375M58 341V383L91 416H120"/>
+    <path d="M72 183V150L97 125M439 348V373L415 397M89 446H177M338 63H375"/>
+  </g>
+  <g fill="#59F9ED"><circle cx="51" cy="199" r="4"/><circle cx="456" cy="322" r="4"/><circle cx="375" cy="420" r="4"/></g>
+  <g fill="#FF8CDD"><circle cx="120" cy="107" r="4"/><circle cx="449" cy="172" r="4"/><rect x="117" y="412" width="8" height="8" rx="1"/></g>
+  <g opacity=".27" filter="url(#glow)" fill="#F570DF">
+    <use href="#petal-shape"/><use href="#petal-shape" transform="rotate(72 256 262)"/><use href="#petal-shape" transform="rotate(144 256 262)"/><use href="#petal-shape" transform="rotate(216 256 262)"/><use href="#petal-shape" transform="rotate(288 256 262)"/>
+  </g>
+  <g fill="url(#petal)" stroke="url(#edge)" stroke-width="2.5" stroke-linejoin="round">
+    <use href="#petal-shape"/><use href="#petal-shape" transform="rotate(72 256 262)"/><use href="#petal-shape" transform="rotate(144 256 262)"/><use href="#petal-shape" transform="rotate(216 256 262)"/><use href="#petal-shape" transform="rotate(288 256 262)"/>
+  </g>
+  <g stroke="#FDD8F3" stroke-opacity=".65" stroke-width="2" stroke-linecap="round">
+    <path id="vein" d="M256 229V198L269 185V164"/><use href="#vein" transform="rotate(72 256 262)"/><use href="#vein" transform="rotate(144 256 262)"/><use href="#vein" transform="rotate(216 256 262)"/><use href="#vein" transform="rotate(288 256 262)"/>
+  </g>
+  <path d="M256 238L277 250V274L256 286L235 274V250Z" fill="#221834" stroke="#75FFF1" stroke-width="3"/>
+  <circle cx="256" cy="262" r="8" fill="#FEDEEF"/>
+  <circle cx="256" cy="262" r="8" fill="#67FCEB" filter="url(#glow)"/>
+</svg>

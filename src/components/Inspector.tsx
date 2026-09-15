@@ -118,12 +118,14 @@ export function Inspector({
   onClose,
   onError,
   onMention,
+  requestedTab,
 }: {
   project?: Project;
   refreshKey: string;
   onClose: () => void;
   onError: (e: unknown) => void;
   onMention: (file: string) => void;
+  requestedTab?: { tab: 'files' | 'changes'; revision: number };
 }) {
   const t = useT(),
     [tab, setTab] = useState<'files' | 'changes'>('files');
@@ -133,6 +135,13 @@ export function Inspector({
     [loading, setLoading] = useState(false),
     [revision, setRevision] = useState(0);
   const [treeKey, setTreeKey] = useState(0);
+  useEffect(() => {
+    if (requestedTab) {
+      setTab(requestedTab.tab);
+      setPreview(null);
+      setDiff(false);
+    }
+  }, [requestedTab]);
   const previewRequest = useRef(0);
   const previewLines = preview?.content.split('\n') ?? [];
   function clearPreview() {

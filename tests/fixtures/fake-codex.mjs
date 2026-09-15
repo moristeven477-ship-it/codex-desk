@@ -5,6 +5,34 @@ if (process.argv.includes('--version')) {
   console.log('codex-cli 0.154.0-fixture');
   process.exit(0);
 }
+if (process.argv.includes('daemon')) {
+  if (process.env.CODEX_DESK_FIXTURE_LAUNCH_LOG)
+    appendFileSync(process.env.CODEX_DESK_FIXTURE_LAUNCH_LOG, process.argv.slice(2).join(' ') + '\n');
+  if (!process.argv.includes('start')) process.exit(1);
+  process.exit(0);
+}
+if (process.argv.includes('--remote')) {
+  let input = '';
+  process.stdin.setRawMode?.(true);
+  process.stdout.write('\x1b[2J\x1b[HCODEX_CLI_FIXTURE_READY\r\n› ');
+  process.stdin.on('data', (data) => {
+    for (const character of data.toString()) {
+      if (character === '\x03') process.exit(0);
+      else if (character === '\x15') {
+        input = '';
+        process.stdout.write('\r\x1b[2K› ');
+      } else if (character === '\r') {
+        if (input === '/exit') process.exit(0);
+        process.stdout.write('\r\nCLI executed: ' + input + '\r\n› ');
+        input = '';
+      } else {
+        input += character;
+        process.stdout.write(character);
+      }
+    }
+  });
+  await new Promise(() => {});
+}
 const write = (message) => process.stdout.write(JSON.stringify(message) + '\n');
 const notify = (method, params) => write({ method, params });
 const root = process.env.CODEX_DESK_FIXTURE_ROOT || '/workspace/atlas';
@@ -36,6 +64,21 @@ const threads = [
 ];
 let turnCounter = 0;
 let pendingApproval;
+const locked = new Set();
+const goals = new Map();
+const settings = new Map();
+let lastTurnParams;
+const currentSettings = (thread) =>
+  settings.get(thread.id) || {
+    model: thread.model || 'test-codex',
+    effort: 'medium',
+    cwd: thread.cwd,
+    sandboxPolicy: { type: 'workspaceWrite' },
+    collaborationMode: {
+      mode: 'default',
+      settings: { model: 'test-codex', reasoning_effort: 'medium', developer_instructions: null },
+    },
+  };
 createInterface({ input: process.stdin }).on('line', (line) => {
   const message = JSON.parse(line),
     p = message.params || {};
@@ -53,7 +96,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   const thread = threads.find((t) => t.id === p.threadId);
   switch (message.method) {
     case 'initialize':
-      reply({ userAgent: 'fixture', codexHome: '/fixture/.codex' });
+      reply({ userAgent: 'fixture', codexHome: process.env.CODEX_HOME || '/fixture/.codex' });
       break;
     case 'initialized':
       break;
@@ -64,11 +107,24 @@ createInterface({ input: process.stdin }).on('line', (line) => {
             id: 'test-codex',
             model: 'test-codex',
             displayName: 'Codex · Test fixture',
+            description: 'A capable model for everyday coding tasks.',
             isDefault: true,
             defaultReasoningEffort: 'medium',
             supportedReasoningEfforts: [
               { reasoningEffort: 'medium', description: 'Balanced' },
               { reasoningEffort: 'high', description: 'Thorough' },
+            ],
+          },
+          {
+            id: 'test-fast',
+            model: 'test-fast',
+            displayName: 'Codex · Fast fixture',
+            description: 'Quick answers for small coding tasks.',
+            isDefault: false,
+            defaultReasoningEffort: 'low',
+            supportedReasoningEfforts: [
+              { reasoningEffort: 'low', description: 'Quick' },
+              { reasoningEffort: 'medium', description: 'Balanced' },
             ],
           },
         ],
@@ -88,20 +144,86 @@ createInterface({ input: process.stdin }).on('line', (line) => {
             (t) =>
               !!t.archived === !!p.archived &&
               (!p.cwd || t.cwd === p.cwd) &&
-              (!p.searchTerm || t.name.includes(p.searchTerm)),
+              (!p.searchTerm || (t.name || t.preview).includes(p.searchTerm)),
           )
           .map((t) => ({ ...t, turns: [] })),
         nextCursor: null,
       });
       break;
     case 'thread/read':
+      if (p.includeTurns && thread.materialized === false) {
+        if (!thread.metadataReady) {
+          write({ id: message.id, error: { code: -32601, message: 'list_turns is not supported yet' } });
+          break;
+        }
+        thread.materialized = true;
+      }
       reply({ thread: { ...thread, turns: p.includeTurns ? thread.turns : [] } });
+      break;
+    case 'thread/metadata/update':
+      thread.metadataReady = true;
+      reply({ thread });
       break;
     case 'thread/turns/list':
       reply({ data: [...thread.turns].reverse(), nextCursor: null });
       break;
     case 'thread/resume':
-      reply({ thread });
+      if (thread.materialized === false)
+        write({
+          id: message.id,
+          error: { code: -32600, message: 'no rollout found for thread id ' + thread.id },
+        });
+      else if (locked.has(thread.id))
+        write({
+          id: message.id,
+          error: { code: -32000, message: `thread ${thread.id} already has an active writer` },
+        });
+      else {
+        reply({
+          thread,
+          model: currentSettings(thread).model,
+          reasoningEffort: currentSettings(thread).effort,
+          sandbox: currentSettings(thread).sandboxPolicy,
+        });
+        notify('thread/settings/updated', { threadId: thread.id, threadSettings: currentSettings(thread) });
+      }
+      break;
+    case 'thread/settings/update': {
+      const next = { ...currentSettings(thread), ...p };
+      settings.set(thread.id, next);
+      reply({});
+      notify('thread/settings/updated', { threadId: thread.id, threadSettings: next });
+      break;
+    }
+    case 'thread/goal/get':
+      reply({ goal: goals.get(p.threadId) || null });
+      break;
+    case 'thread/goal/set': {
+      const goal = {
+        threadId: thread.id,
+        objective: '',
+        status: 'active',
+        tokenBudget: null,
+        tokensUsed: 0,
+        timeUsedSeconds: 0,
+        createdAt: Date.now() / 1000,
+        ...goals.get(thread.id),
+        ...p,
+        updatedAt: Date.now() / 1000,
+      };
+      goals.set(thread.id, goal);
+      reply({ goal });
+      notify('thread/goal/updated', { threadId: thread.id, turnId: null, goal });
+      break;
+    }
+    case 'thread/goal/clear':
+      goals.delete(thread.id);
+      reply({});
+      notify('thread/goal/cleared', { threadId: thread.id });
+      break;
+    case 'thread/compact/start':
+      reply({});
+      notify('thread/compacted', { threadId: thread.id });
       break;
     case 'thread/start': {
       const created = {
@@ -112,6 +234,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         cwd: p.cwd,
         turns: [],
         archived: false,
+        materialized: false,
+        metadataReady: false,
       };
       threads.push(created);
       reply({ thread: created });
@@ -140,6 +264,16 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       break;
     }
     case 'turn/start': {
+      lastTurnParams = p;
+      const next = {
+        ...currentSettings(thread),
+        model: p.model || currentSettings(thread).model,
+        effort: p.effort || currentSettings(thread).effort,
+        sandboxPolicy: p.sandboxPolicy || currentSettings(thread).sandboxPolicy,
+        collaborationMode: p.collaborationMode || currentSettings(thread).collaborationMode,
+      };
+      settings.set(thread.id, next);
+      notify('thread/settings/updated', { threadId: thread.id, threadSettings: next });
       const turn = { id: `turn-${++turnCounter}`, status: 'inProgress', items: [] };
       thread.turns.push(turn);
       thread.status = { type: 'active' };
@@ -179,6 +313,14 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     }
     case 'test.ping':
       reply(p);
+      break;
+    case 'test.lock':
+      if (p.locked) locked.add(p.threadId);
+      else locked.delete(p.threadId);
+      reply({});
+      break;
+    case 'test.lastTurn':
+      reply(lastTurnParams || {});
       break;
     case 'test.hang':
       break;

@@ -17,6 +17,7 @@ const bridge: NativeBridge = {
   pickDirectory: () => ipcRenderer.invoke('desk:pick-directory'),
   pickImages: () => ipcRenderer.invoke('desk:pick-images'),
   openExternal: (url) => ipcRenderer.invoke('desk:open-url', url),
+  openTerminal: (threadId) => ipcRenderer.invoke('desk:open-terminal', threadId),
   windowAction: (action) => ipcRenderer.invoke('desk:window', action),
 };
 contextBridge.exposeInMainWorld('codexDesk', bridge);

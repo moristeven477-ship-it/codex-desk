@@ -32,6 +32,7 @@ export function Settings({
   const t = useT(),
     [binary, setBinary] = useState(boot.settings.binaryPath),
     [home, setHome] = useState(boot.settings.codexHome);
+  const [workspace, setWorkspace] = useState(boot.settings.defaultWorkspace);
   const [busy, setBusy] = useState(false),
     [saved, setSaved] = useState(false),
     [tab, setTab] = useState('general');
@@ -139,12 +140,33 @@ export function Settings({
                   </button>
                 </div>
               </div>
+              <label className="field-label default-workspace-setting">
+                {t('默认工作区', 'Default workspace')}
+                <input
+                  value={workspace}
+                  placeholder={boot.defaultWorkspace}
+                  onChange={(event) => setWorkspace(event.target.value)}
+                  onBlur={() => {
+                    if (workspace.trim() !== boot.settings.defaultWorkspace)
+                      void onSave({ defaultWorkspace: workspace.trim() }).catch(onError);
+                  }}
+                />
+              </label>
+              <p className="settings-help">
+                {t(
+                  '未选择项目的新会话会在这里开始。留空使用 ~/Codex/workspace。',
+                  'New conversations without a selected project start here. Leave blank for ~/Codex/workspace.',
+                )}
+              </p>
             </>
           ) : (
             <>
               <h3>{t('连接本机 Codex', 'Connect to local Codex')}</h3>
               <p className="muted">
-                {t('使用已安装的 CLI 和已有登录状态。', 'Use your installed CLI and existing sign-in.')}
+                {t(
+                  '通过本地共享服务连接 CLI，保留已有登录状态。',
+                  'Connect through the shared local CLI service using your existing sign-in.',
+                )}
               </p>
               <div className="connection-card">
                 <span className={`status-dot ${boot.connection.phase === 'ready' ? '' : 'offline'}`} />
