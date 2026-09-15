@@ -26,6 +26,9 @@ try {
         XDG_RUNTIME_DIR: path.join(root, 'runtime'),
         XDG_CONFIG_HOME: path.join(root, 'config'),
         GSETTINGS_BACKEND: 'memory',
+        // The private test bus deliberately has no IBus/Fcitx service.
+        GTK_IM_MODULE: 'simple',
+        XMODIFIERS: '@im=none',
         NO_AT_BRIDGE: '1',
         GIO_USE_VFS: 'local',
         DESK_TERMINAL_TEST: '1',

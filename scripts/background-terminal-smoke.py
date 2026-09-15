@@ -58,6 +58,7 @@ def type_text(text):
     xtst = ctypes.CDLL("libXtst.so.6")
     x11.XOpenDisplay.restype = ctypes.c_void_p
     x11.XKeysymToKeycode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+    x11.XKeysymToKeycode.restype = ctypes.c_ubyte
     x11.XFlush.argtypes = [ctypes.c_void_p]
     x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
     xtst.XTestFakeKeyEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_int, ctypes.c_ulong]
@@ -138,7 +139,7 @@ try:
     assert len(terminal_windows()) == 1
     assert active() == sentinel, "A new tab stole focus."
     type_text("abc")
-    assert entry.get_text() == "abc", "Typing must stay in Desk."
+    assert entry.get_text() == "abc", f"Typing must stay in Desk: text={entry.get_text()!r}, focused={entry.has_focus()}, active={active()}"
     # Explicit user activation can restore the window. The GTK helper only
     # suppresses the first automatic presentation, never subsequent activation.
     activate_window(windows[0])
