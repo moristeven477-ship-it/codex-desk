@@ -2,6 +2,8 @@
 
 - Build a native Ubuntu desktop application specifically for the official Codex CLI.
 - Keep the same conversation synchronized between Desk and the real CLI using the shared local app-server. Preserve conversation IDs and history.
+- CLI runtime settings take priority. Desk may override them only after an explicit change in its UI. Inherit sandbox, approval policy, model, reasoning, and collaboration settings on ordinary sends.
+- Keep development and validation isolated from the user's running llama.cpp work: use this repository and dedicated temporary workspaces/conversations; never stop or alter that session or its processes.
 - Provide English and Simplified Chinese for user-facing controls.
 - Allow the first conversation to start in a default workspace without requiring a project picker.
 - The user requests that future completed updates be committed and pushed to this public GitHub repository. Publish updated Ubuntu release artifacts when shipping desktop application changes, and update the local installation when applicable.

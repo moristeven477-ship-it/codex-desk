@@ -12,10 +12,12 @@ import { CodexTerminal } from './pty';
 import type { TerminalCommand } from './terminal';
 import { APP_VERSION } from '../src/shared/version';
 import { isWriterConflict } from '../src/shared/errors';
+import { permissionOverride, threadPermissions } from '../src/shared/permissions';
+import { storedThreadContext } from './thread-context';
 
 const text = z.string().min(1).max(4096);
 const threadArgs = z.object({ threadId: text });
-const access = z.enum(['read-only', 'workspace-write', 'danger-full-access']).default('workspace-write');
+const access = z.enum(['read-only', 'workspace-write', 'danger-full-access']).optional();
 const turnArgs = z.object({
   threadId: text,
   text: z.string().max(200_000).default(''),
@@ -67,12 +69,7 @@ export class DeskService extends EventEmitter {
           model: settings.model,
           reasoningEffort: settings.effort,
           collaborationMode: settings.collaborationMode?.mode,
-          permissionMode:
-            settings.sandboxPolicy.type === 'readOnly'
-              ? 'read-only'
-              : settings.sandboxPolicy.type === 'dangerFullAccess'
-                ? 'danger-full-access'
-                : 'workspace-write',
+          ...threadPermissions(settings),
         });
       }
       this.emit('event', event);
@@ -110,26 +107,47 @@ export class DeskService extends EventEmitter {
     if (this.loaded.has(threadId)) return;
     if (this.resuming.has(threadId)) return this.resuming.get(threadId);
     const operation = (async () => {
+      let overrides: JsonObject = {};
+      // Live CLI state always wins. Only an unloaded legacy thread needs its saved
+      // context restored: app-server otherwise replaces its sandbox with defaults.
+      let cursor: string | null = null,
+        live = false;
+      do {
+        const page: { data: string[]; nextCursor: string | null } = await this.codex.request(
+          'thread/loaded/list',
+          { limit: 100, cursor },
+        );
+        live = page.data.includes(threadId);
+        cursor = page.nextCursor;
+      } while (!live && cursor);
+      if (!live) {
+        const { thread } = await this.codex.request<{ thread: Thread }>('thread/read', {
+          threadId,
+          includeTurns: false,
+        });
+        overrides = (
+          await storedThreadContext(
+            this.codex.connection.codexHome ||
+              this.store.state.settings.codexHome ||
+              path.join(homedir(), '.codex'),
+            thread,
+          )
+        ).resume;
+      }
       const result = await this.codex.request<{
         thread: Thread;
         model?: string;
         reasoningEffort?: string;
         sandbox?: { type: string };
-      }>('thread/resume', { threadId, excludeTurns: true });
+        approvalPolicy?: Thread['approvalPolicy'];
+        approvalsReviewer?: string;
+        activePermissionProfile?: Thread['activePermissionProfile'];
+      }>('thread/resume', { threadId, excludeTurns: true, ...overrides });
       this.runtime.set(threadId, {
         ...this.runtime.get(threadId),
         ...(result.model ? { model: result.model } : {}),
         ...(result.reasoningEffort ? { reasoningEffort: result.reasoningEffort } : {}),
-        ...(result.sandbox
-          ? {
-              permissionMode:
-                result.sandbox.type === 'readOnly'
-                  ? 'read-only'
-                  : result.sandbox.type === 'dangerFullAccess'
-                    ? 'danger-full-access'
-                    : 'workspace-write',
-            }
-          : {}),
+        ...threadPermissions(result),
       });
       this.loaded.add(threadId);
     })();
@@ -258,7 +276,14 @@ export class DeskService extends EventEmitter {
           await this.resume(args.threadId);
         } catch (error) {
           if (!isWriterConflict(error)) throw error;
-          return { ...(await this.history(args.threadId)), syncState: 'external' } satisfies Thread;
+          const thread = await this.history(args.threadId);
+          const context = await storedThreadContext(
+            this.codex.connection.codexHome ||
+              this.store.state.settings.codexHome ||
+              path.join(homedir(), '.codex'),
+            thread,
+          );
+          return { ...thread, ...context.display, syncState: 'external' } satisfies Thread;
         }
         const thread = {
           ...(await this.history(args.threadId)),
@@ -369,13 +394,24 @@ export class DeskService extends EventEmitter {
             name: 'Codex Workspace',
           })) as { id: string; path: string };
         }
-        const { thread } = await this.codex.request<{ thread: Thread }>('thread/start', {
+        const overrides = permissionOverride(args.access);
+        const result = await this.codex.request<{ thread: Thread } & JsonObject>('thread/start', {
           cwd: project.path,
           ephemeral: false,
           ...(args.model ? { model: args.model } : {}),
-          sandbox: args.access,
-          approvalPolicy: 'on-request',
-          approvalsReviewer: 'user',
+          ...(args.access
+            ? {
+                sandbox: args.access,
+                approvalPolicy: overrides.approvalPolicy,
+                approvalsReviewer: overrides.approvalsReviewer,
+              }
+            : {}),
+        });
+        const { thread } = result;
+        this.runtime.set(thread.id, {
+          ...threadPermissions(result),
+          model: thread.model,
+          reasoningEffort: thread.reasoningEffort,
         });
         this.loaded.add(thread.id);
         this.pristine.add(thread.id);
@@ -387,7 +423,7 @@ export class DeskService extends EventEmitter {
           gitInfo: { branch: thread.gitInfo?.branch ?? null },
         });
         await this.codex.request('thread/read', { threadId: thread.id, includeTurns: true });
-        return { ...thread, syncState: 'live' } satisfies Thread;
+        return { ...thread, ...this.runtime.get(thread.id), syncState: 'live' } satisfies Thread;
       }
       case 'thread.rename': {
         const args = z.object({ threadId: text, name: z.string().trim().min(1).max(200) }).parse(params);
@@ -421,20 +457,8 @@ export class DeskService extends EventEmitter {
           throw new Error('This conversation already has a running turn.');
         for (const image of args.images)
           if (!this.imagePaths.has(image))
-            throw new Error('Select image attachments using the attachment picker.');
+            throw new Error('Attach images using the attachment picker or paste them into the composer.');
         await this.resume(args.threadId);
-        const sandboxPolicy =
-          args.access === 'read-only'
-            ? { type: 'readOnly', networkAccess: false }
-            : args.access === 'danger-full-access'
-              ? { type: 'dangerFullAccess' }
-              : {
-                  type: 'workspaceWrite',
-                  writableRoots: [],
-                  networkAccess: false,
-                  excludeTmpdirEnvVar: false,
-                  excludeSlashTmp: false,
-                };
         const input = [
           ...(args.text.trim() ? [{ type: 'text', text: args.text, text_elements: [] }] : []),
           ...args.images.map((file) => ({ type: 'localImage', path: file })),
@@ -442,9 +466,7 @@ export class DeskService extends EventEmitter {
         const result = await this.codex.request<{ turn: Turn }>('turn/start', {
           threadId: args.threadId,
           input,
-          sandboxPolicy,
-          approvalPolicy: 'on-request',
-          approvalsReviewer: 'user',
+          ...permissionOverride(args.access),
           ...(args.model ? { model: args.model } : {}),
           ...(args.effort ? { effort: args.effort } : {}),
           ...(args.collaborationMode

@@ -67,6 +67,7 @@ let pendingApproval;
 const locked = new Set();
 const goals = new Map();
 const settings = new Map();
+const loaded = new Set(['fixture-history']);
 let lastTurnParams;
 const currentSettings = (thread) =>
   settings.get(thread.id) || {
@@ -74,6 +75,8 @@ const currentSettings = (thread) =>
     effort: 'medium',
     cwd: thread.cwd,
     sandboxPolicy: { type: 'workspaceWrite' },
+    approvalPolicy: 'on-request',
+    approvalsReviewer: 'user',
     collaborationMode: {
       mode: 'default',
       settings: { model: 'test-codex', reasoning_effort: 'medium', developer_instructions: null },
@@ -150,6 +153,9 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         nextCursor: null,
       });
       break;
+    case 'thread/loaded/list':
+      reply({ data: [...loaded].filter((id) => !locked.has(id)), nextCursor: null });
+      break;
     case 'thread/read':
       if (p.includeTurns && thread.materialized === false) {
         if (!thread.metadataReady) {
@@ -179,11 +185,27 @@ createInterface({ input: process.stdin }).on('line', (line) => {
           error: { code: -32000, message: `thread ${thread.id} already has an active writer` },
         });
       else {
+        if (!loaded.has(thread.id)) {
+          const next = { ...currentSettings(thread) };
+          if (p.sandbox)
+            next.sandboxPolicy = {
+              type: {
+                'danger-full-access': 'dangerFullAccess',
+                'workspace-write': 'workspaceWrite',
+                'read-only': 'readOnly',
+              }[p.sandbox],
+            };
+          if (p.approvalPolicy) next.approvalPolicy = p.approvalPolicy;
+          settings.set(thread.id, next);
+        }
+        loaded.add(thread.id);
         reply({
           thread,
           model: currentSettings(thread).model,
           reasoningEffort: currentSettings(thread).effort,
           sandbox: currentSettings(thread).sandboxPolicy,
+          approvalPolicy: currentSettings(thread).approvalPolicy,
+          approvalsReviewer: currentSettings(thread).approvalsReviewer,
         });
         notify('thread/settings/updated', { threadId: thread.id, threadSettings: currentSettings(thread) });
       }
@@ -238,7 +260,24 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         metadataReady: false,
       };
       threads.push(created);
-      reply({ thread: created });
+      loaded.add(created.id);
+      const initial = currentSettings(created);
+      if (p.sandbox)
+        initial.sandboxPolicy = {
+          type: {
+            'danger-full-access': 'dangerFullAccess',
+            'workspace-write': 'workspaceWrite',
+            'read-only': 'readOnly',
+          }[p.sandbox],
+        };
+      if (p.approvalPolicy) initial.approvalPolicy = p.approvalPolicy;
+      settings.set(created.id, initial);
+      reply({
+        thread: created,
+        sandbox: initial.sandboxPolicy,
+        approvalPolicy: initial.approvalPolicy,
+        approvalsReviewer: initial.approvalsReviewer,
+      });
       notify('thread/started', { thread: created });
       break;
     }
@@ -270,6 +309,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         model: p.model || currentSettings(thread).model,
         effort: p.effort || currentSettings(thread).effort,
         sandboxPolicy: p.sandboxPolicy || currentSettings(thread).sandboxPolicy,
+        approvalPolicy: p.approvalPolicy || currentSettings(thread).approvalPolicy,
+        approvalsReviewer: p.approvalsReviewer || currentSettings(thread).approvalsReviewer,
         collaborationMode: p.collaborationMode || currentSettings(thread).collaborationMode,
       };
       settings.set(thread.id, next);
@@ -313,6 +354,9 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     }
     case 'test.ping':
       reply(p);
+      break;
+    case 'test.settings':
+      reply(currentSettings(thread));
       break;
     case 'test.lock':
       if (p.locked) locked.add(p.threadId);

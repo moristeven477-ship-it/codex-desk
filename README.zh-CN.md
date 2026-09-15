@@ -18,7 +18,9 @@ _截图使用测试项目，应用实际连接本机 Codex CLI。_
 - 实时显示回复、命令输出、思考摘要、执行计划与文件修改。
 - 多个会话分别运行；随时停止当前任务。
 - 在界面中处理命令、文件和权限审批，以及 Codex 的问题。
-- 选择模型、推理强度、权限模式；使用原生文件选择器添加图片。
+- 选择模型、推理强度、权限模式；支持 **Ctrl+V 粘贴截图和复制的图片**，或通过原生文件选择器添加图片。发送前可预览、移除，每条消息最多 8 张，每张不超过 20 MiB。
+- 新会话选择 **跟随 CLI 配置 / 只读 / 标准模式 / YOLO**。
+- 任务完成后显示顶部提醒；后台完成会发送 Ubuntu 系统通知，点击可返回对应会话。
 - 浏览项目文件，查看 Git 暂存、未暂存和未跟踪更改。
 - 中英文切换，深浅色主题，侧栏与文件面板调整。
 - 无须先选项目，直接在默认工作区开始；文字草稿跨重启保存。
@@ -46,7 +48,7 @@ codex login
 从 [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest) 下载 `.deb`：
 
 ```bash
-sudo apt install ./codex-desk-0.2.0-amd64.deb
+sudo apt install ./codex-desk-0.2.1-amd64.deb
 ```
 
 安装后在 Ubuntu 应用菜单中打开 **Codex Desk**，或运行 `codex-desk`。
@@ -54,14 +56,14 @@ sudo apt install ./codex-desk-0.2.0-amd64.deb
 也可下载便携 AppImage：
 
 ```bash
-chmod +x codex-desk-0.2.0-x86_64.AppImage
-./codex-desk-0.2.0-x86_64.AppImage
+chmod +x codex-desk-0.2.1-x86_64.AppImage
+./codex-desk-0.2.1-x86_64.AppImage
 ```
 
 没有 FUSE 时：
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.0-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.1-x86_64.AppImage
 ```
 
 Ubuntu 24.04 优先使用 `.deb`，安装器包含 Electron 的 AppArmor 集成。遇到沙箱错误时参考[故障排查](docs/TROUBLESHOOTING.md)，不要通过关闭沙箱解决。
@@ -86,12 +88,30 @@ Ubuntu 24.04 优先使用 `.deb`，安装器包含 Electron 的 AppArmor 集成�
 | `Enter`       | 发送     |
 | `Shift+Enter` | 换行     |
 
+## CLI 设置优先
+
+已有会话默认继承 CLI 的实时沙箱、审批策略、模型、推理强度和计划模式。打开会话或发送普通消息不会覆盖它们；只有在 Desk 主动选择设置时，才在下一轮应用对应变更，并通过 Codex 同步。
+
+新会话提供以下启动模式：
+
+| 模式          | Codex 设置                                                     |
+| ------------- | -------------------------------------------------------------- |
+| 跟随 CLI 配置 | 使用当前有效配置，不覆盖权限                                   |
+| 只读          | `read-only` 沙箱 + `on-request` 审批                           |
+| 标准模式      | `workspace-write` 沙箱 + `on-request` 审批，对应 `--full-auto` |
+| YOLO          | `danger-full-access` + `never`，对应 `--yolo`                  |
+
+独立 CLI 打开期间仍拥有该会话。Desk 显示其最近保存的权限，实时权限同步需要共享连接。恢复尚未加载的旧会话时，Desk 从最近可读取的会话记录恢复权限；没有可用记录时，独立 CLI 会话显示「跟随 CLI」；成功恢复后显示 Codex 返回的实际设置。未主动选择 Desk 预设时，CLI 的实时自定义权限保持原样。Codex 的受管要求仍然生效。
+
+完成提醒在 8 秒后自动消失，也可以手动关闭或点击查看会话。Desk 位于后台时还会发送原生通知，其显示遵循 Ubuntu 的通知设置。
+
 ## 数据与边界
 
 应用通过本机 Unix socket 上的 WebSocket 连接官方 `codex app-server`，不监听 TCP 端口、不提供云中转、不收集应用遥测。服务不存在时自动启动；npm 版无法使用官方 daemon 安装入口时，会启动独立于 Desk 生命周期的官方 Unix 监听进程。
 
 - 会话与登录凭证仍由 Codex 管理，通常位于 `~/.codex`。
 - 项目书签与偏好通常位于 `~/.config/Codex Desk/state.json`。
+- 粘贴图片以私有 PNG 文件保存于 `~/.config/Codex Desk/attachments/`，会持续保留以便 CLI 读取历史引用。重启 Desk 不会恢复尚未发送的图片选择。
 - 文字草稿保存在同一应用数据目录下的本地存储中。
 - 应用不另行复制 API Key 或 Codex 登录文件；模型仍使用原有订阅额度或 API 计费。
 - 文件面板是只读预览；文件编辑由 Codex 完成。移除书签不会删除项目文件。

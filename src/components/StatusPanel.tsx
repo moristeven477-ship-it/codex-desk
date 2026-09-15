@@ -20,7 +20,19 @@ export function StatusPanel({
     [t('工作目录', 'Working directory'), thread?.cwd || boot.defaultWorkspace],
     [t('模型', 'Model'), thread?.model || boot.models.find((model) => model.isDefault)?.displayName || '—'],
     [t('推理强度', 'Reasoning effort'), thread?.reasoningEffort || '—'],
-    [t('权限', 'Permissions'), thread?.permissionMode || 'workspace-write'],
+    [t('权限', 'Permissions'), thread?.permissionMode || t('跟随 CLI', 'Follow CLI')],
+    [
+      t('审批策略', 'Approval policy'),
+      typeof thread?.approvalPolicy === 'string'
+        ? thread.approvalPolicy
+        : thread?.approvalPolicy
+          ? JSON.stringify(thread.approvalPolicy)
+          : '—',
+    ],
+    [t('审批方式', 'Approval reviewer'), thread?.approvalsReviewer || '—'],
+    ...(thread?.syncState === 'external'
+      ? [[t('权限来源', 'Permission source'), t('CLI 最近保存的设置', 'Last settings saved by CLI')]]
+      : []),
     [t('模式', 'Mode'), thread?.collaborationMode === 'plan' ? t('计划', 'Plan') : t('默认', 'Default')],
     [
       t('同步', 'Sync'),

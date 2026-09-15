@@ -1,4 +1,5 @@
 import type { CodexEvent, Item, Thread, Turn } from '../shared/types';
+import { threadPermissions } from '../shared/permissions';
 
 export function reduceThread(thread: Thread, event: CodexEvent): Thread {
   const p = event.params;
@@ -22,12 +23,7 @@ export function reduceThread(thread: Thread, event: CodexEvent): Thread {
       reasoningEffort: settings.effort,
       cwd: settings.cwd,
       collaborationMode: settings.collaborationMode?.mode,
-      permissionMode:
-        settings.sandboxPolicy.type === 'readOnly'
-          ? 'read-only'
-          : settings.sandboxPolicy.type === 'dangerFullAccess'
-            ? 'danger-full-access'
-            : 'workspace-write',
+      ...threadPermissions(settings),
     };
   }
   let turns = [...(thread.turns ?? [])];

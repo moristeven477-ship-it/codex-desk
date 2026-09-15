@@ -15,6 +15,7 @@ import type {
 import { reduceThread } from './events';
 import { isWriterConflict } from '../shared/errors';
 import { APP_VERSION } from '../shared/version';
+import { CompletionTracker, type CompletionNotice } from '../shared/completion';
 
 export async function request<T = unknown>(method: string, params?: JsonObject): Promise<T> {
   if (!window.codexDesk) throw new Error('Open Codex Desk using the desktop application.');
@@ -40,11 +41,15 @@ const empty: Bootstrap = {
 };
 
 export function useDesk() {
+  const [completion, setCompletion] = useState<CompletionNotice>();
+  const dismissCompletion = useCallback(() => setCompletion(undefined), []);
+  const completions = useRef(new CompletionTracker());
   const [boot, setBoot] = useState<Bootstrap>(empty);
   const [threads, setThreads] = useState<Thread[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [projectId, setProjectId] = useState('');
   const [threadId, setThreadId] = useState('');
+  const [startupAccess, setStartupAccess] = useState<AccessMode>();
   const [cache, setCache] = useState<Record<string, Thread>>({});
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [error, setError] = useState('');
@@ -127,6 +132,9 @@ export function useDesk() {
     let disposed = false;
     const unsubscribe = window.codexDesk?.subscribe((event) => {
       if (disposed) return;
+      if (event.kind === 'navigate' && event.threadId) void openThread(event.threadId);
+      const done = completions.current.receive(event);
+      if (done) setCompletion(done);
       if (event.kind === 'connection' && event.connection) {
         setBoot((old) => ({ ...old, connection: event.connection! }));
         if (event.connection.phase !== 'ready') {
@@ -251,6 +259,7 @@ export function useDesk() {
   }, [refresh]);
 
   function selectProject(id: string) {
+    setStartupAccess(undefined);
     ++selectionGeneration.current;
     setProjectId(id);
     setThreadId('');
@@ -285,7 +294,10 @@ export function useDesk() {
     }
   }
   const creating = useRef<Promise<string> | null>(null);
-  async function ensureThread(model?: string, access: AccessMode = 'workspace-write'): Promise<string> {
+  async function ensureThread(
+    model?: string,
+    access: AccessMode | undefined = startupAccess,
+  ): Promise<string> {
     if (current.current.threadId) return current.current.threadId;
     if (creating.current) return creating.current;
     const operation = (async () => {
@@ -336,7 +348,7 @@ export function useDesk() {
     text: string,
     model: string,
     effort: string,
-    access: AccessMode,
+    access: AccessMode | undefined,
     images: string[],
     collaborationMode?: CollaborationMode,
   ) {
@@ -349,9 +361,9 @@ export function useDesk() {
       const { turn } = await request<{ turn: Turn }>('turn.start', {
         threadId: id,
         text,
-        model,
-        effort,
-        access,
+        ...(model ? { model } : {}),
+        ...(effort ? { effort } : {}),
+        ...(access ? { access } : {}),
         images,
         ...(collaborationMode ? { collaborationMode } : {}),
       });
@@ -430,6 +442,10 @@ export function useDesk() {
     }));
   }
   return {
+    completion,
+    dismissCompletion,
+    startupAccess,
+    setStartupAccess,
     boot,
     projectId,
     threadId,
@@ -464,6 +480,7 @@ export function useDesk() {
     fork,
     older,
     newThread: () => {
+      setStartupAccess(undefined);
       ++selectionGeneration.current;
       setThreadId('');
       setLoading(false);

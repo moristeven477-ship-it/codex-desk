@@ -1,5 +1,5 @@
 import { _electron as electron, expect } from '@playwright/test';
-import { mkdtemp, mkdir, writeFile, chmod, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, stat, chmod, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { sharedFixture } from '../tests/fixtures/shared-server.mjs';
@@ -34,6 +34,14 @@ try {
     env: { ...process.env, CODEX_DESK_USER_DATA: directory, CODEX_DESK_FIXTURE_ROOT: project },
   });
   const page = await desktop.firstWindow();
+  // Capture notifications in this test process without notifying the user's desktop.
+  await desktop.evaluate(({ Notification }) => {
+    globalThis.__deskNotifications = [];
+    Notification.isSupported = () => true;
+    Notification.prototype.show = function () {
+      globalThis.__deskNotifications.push(this);
+    };
+  });
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await expect(page.getByText('Codex connected', { exact: true })).toBeVisible();
@@ -43,9 +51,81 @@ try {
   );
   if (preferences.nodeIntegration || !preferences.contextIsolation || !preferences.sandbox)
     throw new Error('Unsafe renderer preferences');
-  await page.getByRole('textbox', { name: 'Message Codex' }).fill('Native IPC smoke test');
+  const composer = page.getByRole('textbox', { name: 'Message Codex' });
+  const png =
+    'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAL0lEQVR4nO3OIQEAAAgDMKJSG0UUiHEzMb+a3ksqAQEBAQEBAQEBAQEBAQGBdOABxQdctdynpFgAAAAASUVORK5CYII=';
+  await composer.fill('Native IPC smoke test');
+  if (process.env.DESK_TEST_CLIPBOARD === '1') {
+    // Run this option on an isolated Xvfb display: it changes that display's clipboard.
+    await desktop.evaluate(async ({ clipboard, ClipboardItem }, png) => {
+      await clipboard.write([
+        new ClipboardItem({ 'image/png': new Blob([Buffer.from(png, 'base64')], { type: 'image/png' }) }),
+      ]);
+    }, png);
+    await composer.press('Control+v');
+  } else {
+    await composer.evaluate((element, png) => {
+      const data = new DataTransfer();
+      data.items.add(
+        new File([Uint8Array.from(atob(png), (c) => c.charCodeAt(0))], 'screenshot.png', {
+          type: 'image/png',
+        }),
+      );
+      element.dispatchEvent(
+        new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }),
+      );
+    }, png);
+  }
+  await expect(page.locator('.image-attachments img')).toHaveCount(1);
+  await expect(composer).toHaveValue('Native IPC smoke test');
+  await page.getByRole('radio', { name: /YOLO/ }).check();
+  await expect(page.locator('.image-attachments img')).toHaveCount(1);
+  if (process.env.DESK_TEST_CLIPBOARD === '1') {
+    await desktop.evaluate(async ({ clipboard }) => {
+      await clipboard.writeText(' + pasted text');
+    });
+    await composer.press('End');
+    await composer.press('Control+v');
+    await expect(composer).toHaveValue('Native IPC smoke test + pasted text');
+  }
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(page.locator('.markdown')).toContainText('Your local Codex conversation is working.');
+  await expect(page.locator('.completion-toast')).toContainText('Task completed');
+  await expect(page.getByRole('combobox', { name: 'Permission mode', exact: true })).toContainText('YOLO');
+  const history = await page.evaluate(async () => {
+    const boot = await window.codexDesk.request('bootstrap');
+    return window.codexDesk.request('thread.read', { threadId: boot.settings.lastThreadId });
+  });
+  const imagePath = history.turns[0].items
+    .find((item) => item.type === 'userMessage')
+    .content.find((input) => input.type === 'localImage').path;
+  expect(path.dirname(imagePath)).toBe(path.join(directory, 'attachments'));
+  expect((await readFile(imagePath)).subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
+  expect((await stat(imagePath)).mode & 0o777).toBe(0o600);
+  const before = await readdir(path.join(directory, 'attachments'));
+  const errorsFromImport = await page.evaluate(async (png) => {
+    const good = { name: 'valid.png', bytes: Uint8Array.from(atob(png), (c) => c.charCodeAt(0)) };
+    const results = [];
+    for (const uploads of [
+      [good, { name: 'bad.png', bytes: new Uint8Array([1, 2, 3]) }],
+      Array(9).fill(good),
+      [{ name: 'too-big.png', bytes: new Uint8Array(20 * 1024 * 1024 + 1) }],
+      [{ name: 'path.png', path: '/etc/passwd' }],
+    ]) {
+      try {
+        await window.codexDesk.importImages(uploads);
+        results.push('unexpected success');
+      } catch (error) {
+        results.push(error.message);
+      }
+    }
+    return results;
+  }, png);
+  expect(errorsFromImport[0]).toContain('image format');
+  expect(errorsFromImport[1]).toContain('8 images');
+  expect(errorsFromImport[2]).toContain('20 MiB');
+  expect(errorsFromImport[3]).toContain('clipboard image');
+  expect(await readdir(path.join(directory, 'attachments'))).toEqual(before);
   await mkdir('test-results', { recursive: true });
   await page.screenshot({ path: 'test-results/native-ubuntu.png', animations: 'disabled' });
   await page.getByRole('textbox', { name: 'Message Codex' }).fill('/goal');
@@ -64,6 +144,24 @@ try {
   await expect(page.locator('.xterm-screen')).toContainText('CLI executed: /mcp verbose');
   await page.screenshot({ path: 'test-results/native-cli-terminal.png', animations: 'disabled' });
   await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await composer.fill('Notify when this background task completes');
+  const previousNotices = await desktop.evaluate(() => globalThis.__deskNotifications.length);
+  await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].hide());
+  await page.evaluate(() => document.querySelector('.send-button').click());
+  await expect
+    .poll(() => desktop.evaluate(() => globalThis.__deskNotifications.length))
+    .toBe(previousNotices + 1);
+  const nativeNotice = await desktop.evaluate(() => {
+    const notice = globalThis.__deskNotifications.at(-1);
+    const title = notice.title;
+    notice.emit('click');
+    return title;
+  });
+  expect(nativeNotice).toContain('Task completed');
+  await expect(page.locator('.conversation-breadcrumb')).not.toContainText('New conversation');
+  expect(await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible())).toBe(
+    true,
+  );
   if (errors.length) throw new Error(errors.join('\n'));
   console.log(
     JSON.stringify({
@@ -71,10 +169,24 @@ try {
       transport: 'Electron IPC + shared Unix WebSocket',
       embeddedCliPty: 'passed',
       goals: 'passed',
+      images: 'paste, validated IPC, private PNG, localImage send, failed batch cleanup',
+      clipboard:
+        process.env.DESK_TEST_CLIPBOARD === '1'
+          ? 'real Ctrl+V image and text on isolated display'
+          : 'synthetic paste event',
+      yoloStartup: 'passed',
+      completionNotices: 'in-app toast + captured native notification click',
       rendererSandbox: preferences.sandbox,
       chromiumSandboxDisabledForTest: process.env.DESK_TEST_NO_SANDBOX === '1',
     }),
   );
+} catch (error) {
+  if (desktop) {
+    const page = await desktop.firstWindow();
+    console.error('Native UI errors:', await page.locator('.error-banner').allTextContents());
+    await page.screenshot({ path: '/tmp/codex-desk-native-failure.png' }).catch(() => {});
+  }
+  throw error;
 } finally {
   if (desktop) await desktop.close();
   await shared.close();

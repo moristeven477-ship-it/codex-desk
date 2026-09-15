@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown, Cpu, Brain, Gauge, LockKeyhole, Shield, Sparkles, Zap } from 'lucide-react';
-import type { AccessMode, Model } from '../shared/types';
+import type { AccessMode, Model, PermissionMode, ApprovalPolicy } from '../shared/types';
 import { useT } from '../lib/i18n';
 
 interface Choice {
@@ -304,11 +304,13 @@ export function ModelPicker({
 
 export function PermissionPicker({
   value,
+  approvalPolicy,
   onChange,
   disabled,
   openSignal,
 }: {
-  value: AccessMode;
+  value?: PermissionMode;
+  approvalPolicy?: ApprovalPolicy;
   onChange: (mode: AccessMode) => void;
   disabled: boolean;
   openSignal?: number;
@@ -333,10 +335,10 @@ export function PermissionPicker({
     },
     {
       value: 'danger-full-access',
-      title: t('完全访问', 'Full access'),
+      title: t('完全访问 · YOLO', 'Full access · YOLO'),
       description: t(
-        '允许 Codex 访问工作区以外的文件与网络。',
-        'Allow Codex to access files and the network beyond the workspace.',
+        '关闭沙箱与审批，允许访问工作区以外的文件与网络。',
+        'Disable sandboxing and approval prompts; allow files and network beyond the workspace.',
       ),
       icon: <Zap size={18} />,
       danger: true,
@@ -346,19 +348,29 @@ export function PermissionPicker({
     <ChoiceMenu
       openSignal={openSignal}
       label={t('权限模式', 'Permission mode')}
-      display={choices.find((choice) => choice.value === value)?.title || ''}
+      display={
+        value === 'danger-full-access' && approvalPolicy !== 'never'
+          ? t('完全访问', 'Full access')
+          : value === 'external-sandbox'
+            ? t('外部沙箱', 'External sandbox')
+            : choices.find((choice) => choice.value === value)?.title || t('跟随 CLI', 'Follow CLI')
+      }
       icon={<Shield size={12} />}
       sections={[
         {
           id: 'permission',
           title: t('权限模式', 'Permission mode'),
-          value,
+          value: value || '',
           choices,
           select: (selected) => onChange(selected as AccessMode),
         },
       ]}
       header={t('Codex 运行权限', 'Codex permissions')}
-      footnote={t('权限由本机 Codex 执行', 'Enforced by your local Codex')}
+      footnote={
+        approvalPolicy === 'never'
+          ? t('CLI 当前设置 · 不请求审批', 'Current CLI settings · No approval prompts')
+          : t('跟随 CLI；仅主动选择后更改', 'Follow CLI; change only when you select a mode')
+      }
       disabled={disabled}
       compact
     />

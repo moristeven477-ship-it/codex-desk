@@ -1005,6 +1005,65 @@ kbd {
   gap: 10px;
   margin-top: 37px;
 }
+.startup-modes {
+  border: 0;
+  margin: 22px 0 0;
+  padding: 0;
+  text-align: left;
+}
+.startup-modes legend {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.startup-mode-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.startup-mode-options label {
+  position: relative;
+  display: grid;
+  grid-template-columns: 17px 1fr;
+  gap: 7px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+}
+.startup-mode-options label.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.startup-mode-options label:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.startup-mode-options input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.startup-mode-options svg {
+  color: var(--muted);
+}
+.startup-mode-options strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+.startup-mode-options span {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+@media (max-width: 1100px) {
+  .startup-mode-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 .suggestions button {
   border: 1px solid var(--border-strong);
   border-radius: 9px;
@@ -1206,6 +1265,52 @@ select option {
 }
 .permission-select.full-access {
   color: var(--amber);
+}
+.attachment-progress {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 17px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.completion-toast {
+  position: fixed;
+  z-index: 1200;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  padding: 15px 17px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--raised);
+  color: var(--text);
+  box-shadow: 0 12px 36px #0003;
+}
+.completion-toast > svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.completion-toast.failed > svg {
+  color: var(--amber);
+}
+.completion-toast > div {
+  display: grid;
+  gap: 4px;
+}
+.completion-toast strong {
+  font-size: 13px;
+}
+.completion-toast span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.completion-toast button {
+  white-space: nowrap;
 }
 .image-attachments {
   display: flex;

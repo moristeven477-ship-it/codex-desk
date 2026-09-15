@@ -1,12 +1,12 @@
 import { test as base, expect } from '@playwright/test';
-import { mkdtemp, mkdir, writeFile, chmod, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, chmod, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { DeskService } from '../../electron/service';
 import { CodexProcess } from '../../electron/codex';
 // @ts-expect-error The fixture is also used by native JavaScript smoke checks.
 import { sharedFixture } from '../fixtures/shared-server.mjs';
-import type { CodexEvent, JsonObject, Thread } from '../../src/shared/types';
+import type { CodexEvent, JsonObject, Thread, ImageAttachment } from '../../src/shared/types';
 import { slashCommands } from '../../src/shared/commands';
 
 const test = base.extend<{ setup: DeskService }>({
@@ -36,10 +36,31 @@ const test = base.extend<{ setup: DeskService }>({
       await service.handle('settings.update', { lastProjectId: p.id });
       await page.exposeBinding('__deskRequest', (_source, method, params) => service.handle(method, params));
       await page.exposeBinding('__deskPick', () => project);
+      let imageCounter = 0;
+      await page.exposeBinding(
+        '__deskImport',
+        async (_source, uploads: { name: string; bytes: number[] }[]) => {
+          const attachments = await Promise.all(
+            uploads.map(async (upload) => {
+              const file = path.join(root, `clipboard-${++imageCounter}.png`);
+              const bytes = Buffer.from(upload.bytes);
+              await writeFile(file, bytes);
+              return {
+                path: file,
+                name: upload.name,
+                preview: `data:image/png;base64,${bytes.toString('base64')}`,
+              };
+            }),
+          );
+          service.authorizeImages(attachments.map((image) => image.path));
+          return attachments;
+        },
+      );
       await page.addInitScript(() => {
         const w = window as unknown as {
           __deskRequest: (method: string, params?: JsonObject) => Promise<unknown>;
           __deskPick: () => Promise<string>;
+          __deskImport: (images: { name: string; bytes: number[] }[]) => Promise<ImageAttachment[]>;
         };
         window.codexDesk = {
           request: (method, params) => w.__deskRequest(method, params) as Promise<never>,
@@ -50,6 +71,8 @@ const test = base.extend<{ setup: DeskService }>({
           },
           pickDirectory: () => w.__deskPick(),
           pickImages: async () => [],
+          importImages: (images) =>
+            w.__deskImport(images.map((image) => ({ ...image, bytes: Array.from(image.bytes) }))),
           openExternal: async () => {},
           openTerminal: async () => {},
           windowAction: async () => {},
@@ -255,4 +278,135 @@ test('CLI-only commands open an interactive embedded terminal', async ({ page })
   await expect(page.locator('.xterm-screen')).toContainText('CLI executed: /plugins');
   await page.locator('.xterm-helper-textarea').press('Escape');
   await expect(page.getByRole('dialog', { name: 'Codex CLI · 同一会话' })).toBeVisible();
+});
+
+const clipboardPng =
+  'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAL0lEQVR4nO3OIQEAAAgDMKJSG0UUiHEzMb+a3ksqAQEBAQEBAQEBAQEBAQGBdOABxQdctdynpFgAAAAASUVORK5CYII=';
+async function pasteFixture(page: import('@playwright/test').Page, count = 1, oversized = false) {
+  await page.locator('.composer textarea').evaluate(
+    (element, { png, count, oversized }) => {
+      const data = new DataTransfer();
+      const bytes = oversized
+        ? new Uint8Array(20 * 1024 * 1024 + 1)
+        : Uint8Array.from(atob(png), (c) => c.charCodeAt(0));
+      for (let i = 0; i < count; i++)
+        data.items.add(new File([bytes], `screenshot-${i}.png`, { type: 'image/png' }));
+      element.dispatchEvent(
+        new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }),
+      );
+    },
+    { png: clipboardPng, count, oversized },
+  );
+}
+
+test('pasted images preview, preserve drafts through startup mode changes, remove, and send as localImage', async ({
+  page,
+  setup,
+}) => {
+  const composer = page.getByRole('textbox', { name: '发送给 Codex 的消息' });
+  await composer.fill('Explain this screenshot');
+  await pasteFixture(page);
+  await expect(page.locator('.image-attachments img')).toHaveCount(1);
+  await expect(composer).toHaveValue('Explain this screenshot');
+  await page.getByRole('radio', { name: /YOLO/ }).check();
+  await expect(page.locator('.image-attachments img')).toHaveCount(1);
+  await page.getByRole('button', { name: '移除图片' }).click();
+  await expect(page.locator('.image-attachments img')).toHaveCount(0);
+  await pasteFixture(page);
+  await composer.fill('');
+  await page.getByRole('button', { name: '发送消息', exact: true }).click();
+  await expect(page.locator('.markdown')).toContainText('Your local Codex conversation is working.');
+  const params = await setup.codex.request<{ threadId: string; input: { type: string; path: string }[] }>(
+    'test.lastTurn',
+  );
+  expect(params.input).toHaveLength(1);
+  expect(params.input[0].type).toBe('localImage');
+  expect(await readFile(params.input[0].path)).toEqual(Buffer.from(clipboardPng, 'base64'));
+  const actual = await setup.codex.request<{ approvalPolicy: string; sandboxPolicy: { type: string } }>(
+    'test.settings',
+    { threadId: params.threadId },
+  );
+  expect(actual.approvalPolicy).toBe('never');
+  expect(actual.sandboxPolicy.type).toBe('dangerFullAccess');
+  await expect(page.locator('.image-attachments')).toHaveCount(0);
+  await expect(page.locator('.completion-toast')).toContainText('任务已完成');
+});
+
+test('clipboard limits keep existing draft and attachments; pending imports cannot leak into another conversation', async ({
+  page,
+}) => {
+  const composer = page.getByRole('textbox', { name: '发送给 Codex 的消息' });
+  await composer.fill('Keep my draft');
+  await pasteFixture(page, 1, true);
+  await expect(page.getByRole('alert')).toContainText('20 MiB');
+  await pasteFixture(page, 9);
+  await expect(page.getByRole('alert')).toContainText('8 张图片');
+  await expect(page.locator('.image-attachments img')).toHaveCount(0);
+  await pasteFixture(page, 8);
+  await expect(page.locator('.image-attachments img')).toHaveCount(8);
+  await pasteFixture(page);
+  await expect(page.locator('.image-attachments img')).toHaveCount(8);
+  await expect(composer).toHaveValue('Keep my draft');
+  await page.getByRole('button', { name: '移除图片' }).first().click();
+  await page.evaluate(() => {
+    const original = window.codexDesk!.importImages;
+    window.codexDesk!.importImages = async (images) => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      return original(images);
+    };
+  });
+  await pasteFixture(page);
+  await expect(page.getByRole('button', { name: '发送消息', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: /Understand the project/ }).click();
+  await expect(page.locator('.markdown')).toContainText('Atlas');
+  await page.waitForTimeout(500);
+  await expect(page.locator('.image-attachments img')).toHaveCount(0);
+});
+
+test('CLI permission changes are inherited until an explicit Desk change; completion notices navigate and dismiss', async ({
+  page,
+  setup,
+}) => {
+  await setup.codex.request('thread/settings/update', {
+    threadId: 'fixture-history',
+    sandboxPolicy: { type: 'dangerFullAccess' },
+    approvalPolicy: 'never',
+    model: 'test-fast',
+    effort: 'low',
+  });
+  await page.getByRole('button', { name: /Understand the project/ }).click();
+  const permissions = page.getByRole('combobox', { name: '权限模式', exact: true });
+  await expect(permissions).toContainText('YOLO');
+  await expect(page.getByRole('combobox', { name: '模型', exact: true })).toContainText('Fast fixture');
+  const composer = page.getByRole('textbox', { name: '发送给 Codex 的消息' });
+  await composer.fill('Preserve the CLI configuration');
+  await composer.press('Enter');
+  await expect(page.locator('.completion-toast')).toContainText('任务已完成');
+  let params = await setup.codex.request<Record<string, unknown>>('test.lastTurn');
+  for (const key of ['sandboxPolicy', 'approvalPolicy', 'model', 'effort', 'collaborationMode'])
+    expect(params).not.toHaveProperty(key);
+  await permissions.click();
+  await page.getByRole('option', { name: /只读/ }).click();
+  await composer.fill('Use the mode I selected in Desk');
+  await composer.press('Enter');
+  await expect(page.locator('.markdown')).toHaveCount(3);
+  params = await setup.codex.request('test.lastTurn');
+  expect(params.sandboxPolicy).toEqual({ type: 'readOnly', networkAccess: false });
+  expect(params.approvalPolicy).toBe('on-request');
+  await setup.codex.request('thread/settings/update', {
+    threadId: 'fixture-history',
+    sandboxPolicy: { type: 'dangerFullAccess' },
+    approvalPolicy: 'never',
+  });
+  await expect(permissions).toContainText('YOLO');
+  await page.getByRole('button', { name: /^新会话/ }).click();
+  await page.getByRole('button', { name: '查看会话', exact: true }).click();
+  await expect(page.locator('.conversation-breadcrumb')).toContainText('Understand the project');
+  await expect(page.locator('.completion-toast')).toHaveCount(0);
+  await setup.codex.request('turn/start', {
+    threadId: 'fixture-history',
+    input: [{ type: 'text', text: 'One more completion notice' }],
+  });
+  await expect(page.locator('.completion-toast')).toBeVisible();
+  await expect(page.locator('.completion-toast')).toHaveCount(0, { timeout: 10_000 });
 });

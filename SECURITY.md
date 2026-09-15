@@ -9,7 +9,9 @@ Codex Desk can start a coding agent that operates on your files. Its trust bound
 - External links are limited to HTTP/HTTPS. Raw HTML is not rendered from agent Markdown.
 - File previews use canonical project boundaries and bounded reads. Symlink escapes are rejected.
 - Git runs through `execFile` with argument arrays; external diff/textconv helpers and fsmonitor are disabled.
-- Model execution and permission enforcement belong to Codex. The default is workspace write with approvals routed to the user.
+- Model execution and permission enforcement belong to Codex. Conversations inherit CLI settings unless the user explicitly selects a Desk override; the YOLO preset disables the Codex sandbox and approval prompts. Electron renderer isolation remains enabled.
+- Clipboard imports accept bounded raster bytes, validate/decode them in the main process, and write private PNG files with random filenames. The renderer cannot authorize arbitrary image paths.
+- Legacy permission recovery reads only a bounded tail of the Codex-provided rollout path under its canonical sessions directory; it never rewrites CLI history.
 - Credentials stay under Codex's control. No app telemetry is added.
 
 Only select a Codex executable and projects you trust. Project hooks, MCP servers, model providers, and Codex tools remain part of the Codex execution environment.

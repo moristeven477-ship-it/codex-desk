@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowUp, Square, Paperclip, X, Loader2, Slash, ListChecks } from 'lucide-react';
-import type { AccessMode, CollaborationMode, Model, Project } from '../shared/types';
+import type {
+  AccessMode,
+  CollaborationMode,
+  ImageAttachment,
+  Model,
+  Project,
+  PermissionMode,
+  ApprovalPolicy,
+} from '../shared/types';
+import { MAX_IMAGES, MAX_IMAGE_BYTES } from '../shared/images';
 import { useT } from '../lib/i18n';
 import { ModelPicker, PermissionPicker } from './ChoiceMenu';
 import { CommandMenu } from './CommandMenu';
@@ -22,7 +31,9 @@ export function Composer({
   initialModel,
   initialEffort,
   initialAccess,
+  initialApprovalPolicy,
   initialMode,
+  startup,
   onCommand,
   blocked = false,
 }: {
@@ -35,7 +46,7 @@ export function Composer({
     text: string,
     model: string,
     effort: string,
-    access: AccessMode,
+    access: AccessMode | undefined,
     images: string[],
     mode?: CollaborationMode,
   ) => Promise<boolean>;
@@ -48,15 +59,20 @@ export function Composer({
   archived: boolean;
   initialModel?: string | null;
   initialEffort?: string | null;
-  initialAccess?: AccessMode;
+  initialAccess?: PermissionMode;
+  initialApprovalPolicy?: ApprovalPolicy;
   initialMode?: CollaborationMode;
+  startup?: { access?: AccessMode; onChange: (access: AccessMode) => void };
   blocked?: boolean;
 }) {
   const t = useT(),
     [modelId, setModelId] = useState(''),
     [effort, setEffort] = useState('');
-  const [access, setAccess] = useState<AccessMode>('workspace-write');
-  const [mode, setMode] = useState<CollaborationMode>(initialMode || 'default');
+  const [accessOverride, setAccess] = useState<AccessMode>();
+  const chosenAccess = startup ? startup.access : accessOverride;
+  const access = chosenAccess ?? initialAccess;
+  const [modeOverride, setMode] = useState<CollaborationMode>();
+  const mode = modeOverride ?? initialMode ?? 'default';
   const [commandsOpen, setCommandsOpen] = useState(false),
     [modelOpen, setModelOpen] = useState(0),
     [permissionsOpen, setPermissionsOpen] = useState(0);
@@ -64,21 +80,30 @@ export function Composer({
     setCommandsOpen(false);
     inputRef.current?.focus();
   }, [inputRef]);
+  const [images, setImages] = useState<ImageAttachment[]>([]);
+  const [importing, setImporting] = useState(false);
+  const importingRef = useRef(false),
+    mounted = useRef(true);
   useEffect(() => {
-    if (initialMode) setMode(initialMode);
-  }, [initialMode]);
-  const [images, setImages] = useState<{ path: string; name: string; preview: string }[]>([]);
-  useEffect(() => {
-    if (initialModel) setModelId(initialModel);
-    if (initialEffort) setEffort(initialEffort);
-    if (initialAccess) setAccess(initialAccess);
-  }, [initialModel, initialEffort, initialAccess]);
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const effectiveModelId = modelId || initialModel || '';
+  const effectiveEffort = effort || (!modelId ? initialEffort : '') || '';
+  function clearOverrides() {
+    setModelId('');
+    setEffort('');
+    setAccess(undefined);
+    setMode(undefined);
+  }
   const savedModel =
-    modelId && !models.some((m) => m.model === modelId)
+    effectiveModelId && !models.some((m) => m.model === effectiveModelId)
       ? {
-          id: modelId,
-          model: modelId,
-          displayName: modelId,
+          id: effectiveModelId,
+          model: effectiveModelId,
+          displayName: effectiveModelId,
           defaultReasoningEffort: initialEffort || 'medium',
           supportedReasoningEfforts: [{ reasoningEffort: initialEffort || 'medium', description: '' }],
           description: '',
@@ -86,9 +111,10 @@ export function Composer({
         }
       : null;
   const options = savedModel ? [savedModel, ...models] : models;
-  const chosen = options.find((m) => m.model === modelId) ?? options.find((m) => m.isDefault) ?? options[0];
-  const selectedEffort = chosen?.supportedReasoningEfforts.some((e) => e.reasoningEffort === effort)
-    ? effort
+  const chosen =
+    options.find((m) => m.model === effectiveModelId) ?? options.find((m) => m.isDefault) ?? options[0];
+  const selectedEffort = chosen?.supportedReasoningEfforts.some((e) => e.reasoningEffort === effectiveEffort)
+    ? effectiveEffort
     : (chosen?.defaultReasoningEffort ?? 'medium');
   const lock = useRef(false);
   useEffect(() => {
@@ -117,12 +143,17 @@ export function Composer({
           t('等待当前任务结束后切换模式。', 'Wait for the current task before switching modes.'),
         );
       setMode('plan');
-      if (args) return onSend(args, chosen?.model || '', selectedEffort, access, [], 'plan');
+      if (args) {
+        const sent = await onSend(args, modelId, effort, chosenAccess, [], 'plan');
+        if (sent) clearOverrides();
+        return sent;
+      }
       return true;
     }
     return onCommand(name, args);
   }
   async function submit() {
+    if (importingRef.current) return;
     const slash = parseSlash(draft);
     if (slash && connected && !sending && !archived && !lock.current) {
       lock.current = true;
@@ -141,29 +172,71 @@ export function Composer({
       if (
         await onSend(
           draft,
-          chosen?.model ?? '',
-          selectedEffort,
-          access,
+          modelId,
+          effort,
+          chosenAccess,
           images.map((i) => i.path),
-          mode,
+          modeOverride,
         )
       ) {
         onDraft('');
         setImages([]);
+        clearOverrides();
       }
     } finally {
       lock.current = false;
     }
   }
   async function attach() {
+    if (sending || archived || importingRef.current) return;
+    importingRef.current = true;
+    setImporting(true);
     try {
       const result = await window.codexDesk?.pickImages();
-      if (!result) return;
+      if (!result || !mounted.current) return;
       setImages((old) =>
-        [...old, ...result.filter((image) => !old.some((o) => o.path === image.path))].slice(0, 8),
+        [...old, ...result.filter((image) => !old.some((o) => o.path === image.path))].slice(0, MAX_IMAGES),
       );
     } catch (e) {
-      onError(e);
+      if (mounted.current) onError(e);
+    } finally {
+      importingRef.current = false;
+      if (mounted.current) setImporting(false);
+    }
+  }
+  async function pasteImages(files: File[]) {
+    if (sending || archived) return;
+    if (importingRef.current) {
+      onError(new Error(t('正在添加图片，请稍候。', 'Please wait while images are being attached.')));
+      return;
+    }
+    if (files.length + images.length > MAX_IMAGES) {
+      onError(new Error(t('每条消息最多添加 8 张图片。', 'Attach up to 8 images per message.')));
+      return;
+    }
+    if (files.some((file) => file.size > MAX_IMAGE_BYTES)) {
+      onError(new Error(t('每张图片不能超过 20 MiB。', 'Each image must be 20 MiB or smaller.')));
+      return;
+    }
+    importingRef.current = true;
+    setImporting(true);
+    try {
+      if (!window.codexDesk)
+        throw new Error(t('请在桌面应用中粘贴图片。', 'Paste images in the desktop application.'));
+      const uploads = await Promise.all(
+        files.map(async (file) => ({
+          name: file.name.slice(0, 255) || 'clipboard.png',
+          bytes: new Uint8Array(await file.arrayBuffer()),
+        })),
+      );
+      if (!mounted.current) return;
+      const result = await window.codexDesk.importImages(uploads);
+      if (mounted.current) setImages((old) => [...old, ...result]);
+    } catch (error) {
+      if (mounted.current) onError(error);
+    } finally {
+      importingRef.current = false;
+      if (mounted.current) setImporting(false);
     }
   }
   return (
@@ -206,12 +279,25 @@ export function Composer({
             ))}
           </div>
         )}
+        {importing && (
+          <div className="attachment-progress" role="status">
+            <Loader2 size={14} className="spin" />
+            {t('正在添加图片…', 'Attaching images…')}
+          </div>
+        )}
         <textarea
           ref={inputRef}
           value={draft}
           onChange={(e) => {
             onDraft(e.target.value);
             if (e.target.value === '/') setCommandsOpen(true);
+          }}
+          onPaste={(e) => {
+            const files = Array.from(e.clipboardData.files).filter((file) => file.type.startsWith('image/'));
+            if (!files.length) return;
+            // Preserve native text insertion (including selection/cursor position) for mixed clips.
+            if (!e.clipboardData.getData('text/plain')) e.preventDefault();
+            void pasteImages(files);
           }}
           rows={2}
           disabled={archived}
@@ -249,9 +335,9 @@ export function Composer({
             </button>
             <button
               className="icon-button"
-              disabled={disabled || images.length >= 8}
+              disabled={sending || archived || importing || images.length >= MAX_IMAGES}
               onClick={() => void attach()}
-              title={t('添加图片', 'Attach images')}
+              title={t('添加图片，也可 Ctrl+V 粘贴', 'Attach images, or paste with Ctrl+V')}
               aria-label={t('添加图片', 'Attach images')}
             >
               <Paperclip size={18} />
@@ -291,7 +377,7 @@ export function Composer({
             <button
               className="send-button"
               onClick={() => void submit()}
-              disabled={disabled || (!draft.trim() && !images.length)}
+              disabled={disabled || importing || (!draft.trim() && !images.length)}
               aria-label={t('发送消息', 'Send message')}
             >
               {sending ? <Loader2 size={17} className="spin" /> : <ArrowUp size={19} strokeWidth={2.5} />}
@@ -303,7 +389,14 @@ export function Composer({
         <PermissionPicker
           openSignal={permissionsOpen}
           value={access}
-          onChange={setAccess}
+          approvalPolicy={
+            chosenAccess
+              ? chosenAccess === 'danger-full-access'
+                ? 'never'
+                : 'on-request'
+              : initialApprovalPolicy
+          }
+          onChange={startup ? startup.onChange : setAccess}
           disabled={running || sending}
         />
         <span>

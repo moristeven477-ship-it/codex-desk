@@ -1,6 +1,8 @@
 export type JsonObject = Record<string, unknown>;
 export type Locale = 'zh' | 'en';
 export type AccessMode = 'read-only' | 'workspace-write' | 'danger-full-access';
+export type PermissionMode = AccessMode | 'external-sandbox';
+export type ApprovalPolicy = string | JsonObject;
 export type CollaborationMode = 'default' | 'plan';
 export type GoalStatus = 'active' | 'paused' | 'blocked' | 'usageLimited' | 'budgetLimited' | 'complete';
 export interface ThreadGoal {
@@ -80,6 +82,7 @@ export interface Turn {
 }
 export interface Thread {
   id: string;
+  path?: string | null;
   name?: string | null;
   preview: string;
   cwd: string;
@@ -94,7 +97,11 @@ export interface Thread {
   historyMode?: string;
   nextTurnsCursor?: string | null;
   syncState?: 'live' | 'external';
-  permissionMode?: AccessMode;
+  permissionMode?: PermissionMode;
+  approvalPolicy?: ApprovalPolicy;
+  approvalsReviewer?: string;
+  sandboxPolicy?: JsonObject;
+  activePermissionProfile?: { id: string; extends?: string | null } | null;
   collaborationMode?: CollaborationMode;
   goal?: ThreadGoal | null;
   gitInfo?: { sha?: string | null; branch?: string | null; originUrl?: string | null } | null;
@@ -122,7 +129,8 @@ export interface Question {
   options?: { label: string; description: string }[] | null;
 }
 export interface CodexEvent {
-  kind: 'notification' | 'request' | 'connection' | 'resolved' | 'notice' | 'terminal';
+  kind: 'notification' | 'request' | 'connection' | 'resolved' | 'notice' | 'terminal' | 'navigate';
+  threadId?: string;
   method?: string;
   params?: JsonObject;
   request?: Approval;
@@ -165,11 +173,21 @@ export interface FilePreview {
   content: string;
   language: string;
 }
+export interface ImageAttachment {
+  path: string;
+  name: string;
+  preview: string;
+}
+export interface ImageUpload {
+  name: string;
+  bytes: Uint8Array;
+}
 export interface NativeBridge {
   request<T = unknown>(method: string, params?: JsonObject): Promise<T>;
   subscribe(listener: (event: CodexEvent) => void): () => void;
   pickDirectory(): Promise<string | null>;
-  pickImages(): Promise<{ path: string; name: string; preview: string }[]>;
+  pickImages(): Promise<ImageAttachment[]>;
+  importImages(images: ImageUpload[]): Promise<ImageAttachment[]>;
   openExternal(url: string): Promise<void>;
   openTerminal(threadId: string): Promise<void>;
   windowAction(action: 'minimize' | 'maximize' | 'close'): Promise<void>;

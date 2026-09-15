@@ -41,6 +41,8 @@ import { SyncDialog } from './components/SyncDialog';
 import { GoalBadge, GoalPanel } from './components/GoalPanel';
 import { StatusPanel } from './components/StatusPanel';
 import { CliTerminal } from './components/CliTerminal';
+import { CompletionToast } from './components/CompletionToast';
+import { StartupModePicker } from './components/StartupModePicker';
 
 export function App() {
   const desk = useDesk();
@@ -613,6 +615,16 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
               </button>
             </div>
           )}
+          {desk.completion && (
+            <CompletionToast
+              notice={desk.completion}
+              onClose={desk.dismissCompletion}
+              onView={() => {
+                void desk.openThread(desk.completion!.threadId);
+                desk.dismissCompletion();
+              }}
+            />
+          )}
           {!ready && !desk.error && (
             <div className="connection-banner">
               {boot.connection.phase === 'starting' ? (
@@ -667,6 +679,11 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
                     <ArrowUpRight size={15} />
                   </button>
                 )}
+                <StartupModePicker
+                  value={desk.startupAccess}
+                  onChange={desk.setStartupAccess}
+                  disabled={desk.sending}
+                />
                 <div className="suggestions">
                   {suggestions.map((s) => (
                     <button
@@ -741,6 +758,8 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
             initialModel={thread?.model}
             initialEffort={thread?.reasoningEffort}
             initialAccess={thread?.permissionMode}
+            initialApprovalPolicy={thread?.approvalPolicy}
+            startup={!threadId ? { access: desk.startupAccess, onChange: desk.setStartupAccess } : undefined}
             initialMode={thread?.collaborationMode}
             onCommand={runCommand}
             project={project}

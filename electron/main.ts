@@ -1,9 +1,11 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell, Menu } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell, Menu, Notification } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readFile, stat } from 'node:fs/promises';
 import { DeskService } from './service';
 import { openTerminal, type TerminalCommand } from './terminal';
+import { importImages } from './images';
+import { CompletionTracker } from '../src/shared/completion';
 
 let window: BrowserWindow | null = null;
 let service: DeskService;
@@ -84,8 +86,30 @@ else {
         if (url !== allowedURL) event.preventDefault();
       });
       window.webContents.on('will-attach-webview', (event) => event.preventDefault());
+      const completions = new CompletionTracker();
+      const notifications = new Set<Notification>();
       service.on('event', (event) => {
         if (window && !window.isDestroyed()) window.webContents.send('desk:event', event);
+        const done = completions.receive(event);
+        if (!done || !window || window.isFocused() || !Notification.isSupported()) return;
+        const notification = new Notification({
+          title: done.failed
+            ? t('Codex Desk · 任务失败', 'Codex Desk · Task failed')
+            : t('Codex Desk · 任务完成', 'Codex Desk · Task completed'),
+          body: t('点击查看对应会话。', 'Click to view the conversation.'),
+          icon: path.join(__dirname, '../assets/icon.png'),
+        });
+        notifications.add(notification);
+        notification.on('click', () => {
+          if (!window || window.isDestroyed()) return;
+          if (window.isMinimized()) window.restore();
+          window.show();
+          window.focus();
+          window.webContents.send('desk:event', { kind: 'navigate', threadId: done.threadId });
+        });
+        notification.on('close', () => notifications.delete(notification));
+        notification.on('failed', () => notifications.delete(notification));
+        notification.show();
       });
 
       ipcMain.handle('desk:request', async (event, method: unknown, params: unknown) => {
@@ -135,6 +159,16 @@ else {
         );
         service.authorizeImages(images.map((image) => image.path));
         return images;
+      });
+      ipcMain.handle('desk:import-images', async (event, uploads: unknown) => {
+        trusted(event);
+        try {
+          const images = await importImages(path.join(app.getPath('userData'), 'attachments'), uploads, t);
+          service.authorizeImages(images.map((image) => image.path));
+          return { ok: true, value: images };
+        } catch (error) {
+          return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        }
       });
       ipcMain.handle('desk:open-url', async (event, url: unknown) => {
         trusted(event);

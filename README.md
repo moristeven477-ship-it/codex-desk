@@ -21,7 +21,9 @@ _Screenshots show a synthetic test workspace. The application uses your real loc
 - Run conversations independently and stop a running turn.
 - Respond to command/file approvals, permission requests, and Codex questions. Pending requests remain accessible across conversations.
 - Choose a model, reasoning effort, and permission mode. Model choices come from your installed Codex.
-- Attach local images with the native file picker.
+- Paste screenshots and copied images with **Ctrl+V**, or use the native image picker. Preview/remove attachments before sending (8 images per message, 20 MiB each).
+- Choose **CLI defaults / Read only / Standard / YOLO** before starting a conversation.
+- Receive top completion notices and Ubuntu background notifications; click to reopen the finished conversation.
 - Browse local files and inspect staged, unstaged, and untracked Git changes.
 - Switch between English / 简体中文 and dark / light themes.
 - Start immediately in a default workspace, with drafts saved across restarts.
@@ -49,7 +51,7 @@ If Codex already works in your terminal, keep that installation. Codex Desk disc
 Download the `.deb` from [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest), then run:
 
 ```bash
-sudo apt install ./codex-desk-0.2.0-amd64.deb
+sudo apt install ./codex-desk-0.2.1-amd64.deb
 ```
 
 Launch **Codex Desk** from Ubuntu's application menu, or run `codex-desk`.
@@ -59,14 +61,14 @@ The package includes the Electron runtime; Node.js is needed separately only for
 ### Portable AppImage
 
 ```bash
-chmod +x codex-desk-0.2.0-x86_64.AppImage
-./codex-desk-0.2.0-x86_64.AppImage
+chmod +x codex-desk-0.2.1-x86_64.AppImage
+./codex-desk-0.2.1-x86_64.AppImage
 ```
 
 If FUSE is unavailable, run without mounting the AppImage:
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.0-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.1-x86_64.AppImage
 ```
 
 The `.deb` is recommended on Ubuntu 24.04: its installer includes Electron's Ubuntu AppArmor integration. Do not disable Chromium's sandbox to work around an installation problem. See [Troubleshooting](docs/TROUBLESHOOTING.md).
@@ -112,12 +114,30 @@ An existing goal appears at the top right of its conversation. Open it to view t
 
 The embedded terminal uses Ubuntu's `python3` PTY support and xterm.js. It runs your installed Codex executable, connected through `--remote unix://`.
 
+## CLI settings take priority
+
+Existing conversations inherit the CLI's live permissions, approval policy, model, reasoning effort, and plan/default mode. Merely opening a conversation or sending a message does not replace those settings. An explicit selection in Desk changes the corresponding setting for the next turn and is synchronized through Codex.
+
+New conversations offer these startup modes:
+
+| Mode         | Codex settings                                                     |
+| ------------ | ------------------------------------------------------------------ |
+| CLI defaults | Use the effective Codex configuration without permission overrides |
+| Read only    | `read-only` sandbox, `on-request` approvals                        |
+| Standard     | `workspace-write` sandbox, `on-request` approvals (`--full-auto`)  |
+| YOLO         | `danger-full-access` sandbox, `never` approvals (`--yolo`)         |
+
+A standalone CLI still owns its conversation while it is open. Desk can display its last saved permissions; live permission updates require the shared connection. When an unloaded legacy conversation is resumed, Desk restores permissions from its latest readable saved turn context. If that context is unavailable, the standalone view reports Follow CLI; after a successful resume, Desk displays the settings returned by Codex. Custom live policies remain intact unless you explicitly select a Desk preset. Managed Codex requirements still apply.
+
+Completion banners disappear after eight seconds and can be dismissed or clicked to open the conversation. When Desk is in the background, Ubuntu also receives a native notification, subject to your desktop notification settings.
+
 ## Local data and authentication
 
 The renderer talks to Electron through validated IPC. Desk connects to the official app-server using **WebSocket over a local Unix domain socket**, with no TCP listening port or cloud relay. If absent, it starts the shared server. npm installations that cannot use `app-server daemon start` use a detached official `app-server --listen unix://…` listener. No application telemetry is added.
 
 - Conversations and authentication remain in Codex's own home directory, normally `~/.codex`.
 - Project bookmarks and preferences are stored in Electron's user-data directory, normally `~/.config/Codex Desk/state.json`.
+- Pasted images are saved privately in `~/.config/Codex Desk/attachments/` as PNGs and retained so existing CLI conversation references remain valid. Unsent image selections are not restored after restarting Desk.
 - Unsent text drafts are saved in the renderer's local storage under that same application data directory.
 - Codex Desk does not copy API keys or authentication files into its own store.
 - Codex still contacts the configured model provider and tools. Subscription limits / API billing continue to apply.

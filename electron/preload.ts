@@ -16,6 +16,11 @@ const bridge: NativeBridge = {
   },
   pickDirectory: () => ipcRenderer.invoke('desk:pick-directory'),
   pickImages: () => ipcRenderer.invoke('desk:pick-images'),
+  async importImages(images) {
+    const response = await ipcRenderer.invoke('desk:import-images', images);
+    if (!response.ok) throw new Error(response.error);
+    return response.value;
+  },
   openExternal: (url) => ipcRenderer.invoke('desk:open-url', url),
   openTerminal: (threadId) => ipcRenderer.invoke('desk:open-terminal', threadId),
   windowAction: (action) => ipcRenderer.invoke('desk:window', action),

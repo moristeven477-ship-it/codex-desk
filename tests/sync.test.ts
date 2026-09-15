@@ -133,6 +133,64 @@ test('standalone writer remains readable and attaches to the same ID after relea
   }
 });
 
+test('CLI settings win across opening and ordinary sends; only explicit Desk selection overrides YOLO', async () => {
+  const f = await fixture();
+  try {
+    await f.cli.request('thread/settings/update', {
+      threadId: 'fixture-history',
+      sandboxPolicy: { type: 'dangerFullAccess' },
+      approvalPolicy: 'never',
+      approvalsReviewer: 'auto_review',
+      model: 'test-fast',
+      effort: 'low',
+    });
+    const opened = (await f.desk.handle('thread.open', { threadId: 'fixture-history' })) as Thread;
+    assert.equal(opened.permissionMode, 'danger-full-access');
+    assert.equal(opened.approvalPolicy, 'never');
+    const done = eventWhere(f.cli, (event) => event.method === 'turn/completed');
+    await f.desk.handle('turn.start', { threadId: opened.id, text: 'Inherit CLI settings' });
+    await done;
+    const sent = await f.cli.request<Record<string, unknown>>('test.lastTurn');
+    for (const key of [
+      'sandboxPolicy',
+      'approvalPolicy',
+      'approvalsReviewer',
+      'model',
+      'effort',
+      'collaborationMode',
+    ])
+      assert.equal(Object.hasOwn(sent, key), false, `${key} must not be overridden`);
+    let actual = await f.cli.request<Record<string, unknown>>('test.settings', { threadId: opened.id });
+    assert.equal(actual.approvalPolicy, 'never');
+    assert.deepEqual(actual.sandboxPolicy, { type: 'dangerFullAccess' });
+    const done2 = eventWhere(f.cli, (event) => event.method === 'turn/completed');
+    await f.desk.handle('turn.start', {
+      threadId: opened.id,
+      text: 'Explicitly restrict this turn',
+      access: 'read-only',
+    });
+    await done2;
+    actual = await f.cli.request('test.settings', { threadId: opened.id });
+    assert.deepEqual(actual.sandboxPolicy, { type: 'readOnly', networkAccess: false });
+    assert.equal(actual.approvalPolicy, 'on-request');
+    const done3 = eventWhere(f.cli, (event) => event.method === 'turn/completed');
+    await f.desk.handle('turn.start', {
+      threadId: opened.id,
+      text: 'Explicit YOLO',
+      access: 'danger-full-access',
+    });
+    await done3;
+    actual = await f.cli.request('test.settings', { threadId: opened.id });
+    assert.equal(actual.approvalPolicy, 'never');
+    assert.deepEqual(actual.sandboxPolicy, { type: 'dangerFullAccess' });
+    const created = (await f.desk.handle('thread.create', { access: 'danger-full-access' })) as Thread;
+    assert.equal(created.approvalPolicy, 'never');
+    assert.equal(created.permissionMode, 'danger-full-access');
+  } finally {
+    await f.close();
+  }
+});
+
 test('embedded CLI uses a real PTY, supports resize and input, and closes its own client', async () => {
   const f = await fixture();
   try {
