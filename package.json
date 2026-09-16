@@ -1,6 +1,6 @@
 {
   "name": "codex-desk",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "description": "A focused Ubuntu desktop workspace for Codex CLI.",
   "homepage": "https://github.com/moristeven477-ship-it/codex-desk",
@@ -29,7 +29,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:native": "node scripts/test-terminal.mjs --native",
-    "test:terminal": "node scripts/test-terminal.mjs"
+    "test:terminal": "node scripts/test-terminal.mjs",
+    "test:steer": "tsx scripts/steer-live-smoke.ts"
   },
   "build": {
     "appId": "io.github.codexdesk",

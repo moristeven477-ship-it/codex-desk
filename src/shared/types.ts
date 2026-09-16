@@ -27,6 +27,7 @@ export interface Settings {
   defaultWorkspace: string;
   locale: Locale;
   theme: 'dark' | 'light';
+  fontSize: number;
   lastProjectId: string;
   lastThreadId: string;
 }
@@ -188,6 +189,7 @@ export interface NativeBridge {
   pickDirectory(): Promise<string | null>;
   pickImages(): Promise<ImageAttachment[]>;
   importImages(images: ImageUpload[]): Promise<ImageAttachment[]>;
+  copyText(text: string): Promise<void>;
   openExternal(url: string): Promise<void>;
   openTerminal(threadId: string): Promise<void>;
   prepareTerminal(threadId: string): Promise<{ state: 'ready' | 'waiting' | 'error'; error?: string }>;

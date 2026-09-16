@@ -18,7 +18,9 @@ _Screenshots show a synthetic test workspace. The application uses your real loc
 - Browse and continue persisted Codex CLI / IDE / app-server conversations, with paginated history.
 - Create, rename, fork, archive, and restore conversations.
 - Stream replies, command output, reasoning summaries, plans, and file changes.
-- Run conversations independently and stop a running turn.
+- Run conversations independently. While a task runs, press **Enter** or click **Steer** to add text/images to that same turn; **Stop** remains separate.
+- Copy your messages and Codex replies with the visible **Copy** action below each text message.
+- Adjust **Settings → General → Font size** from 12–22 px, with live preview, automatic saving and reset.
 - Respond to command/file approvals, permission requests, and Codex questions. Pending requests remain accessible across conversations.
 - Choose a model, reasoning effort, and permission mode. Model choices come from your installed Codex.
 - Paste screenshots and copied images with **Ctrl+V**, or use the native image picker. Preview/remove attachments before sending (8 images per message, 20 MiB each).
@@ -52,7 +54,7 @@ If Codex already works in your terminal, keep that installation. Codex Desk disc
 Download the `.deb` from [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest), then run:
 
 ```bash
-sudo apt install ./codex-desk-0.2.2-amd64.deb
+sudo apt install ./codex-desk-0.2.3-amd64.deb
 ```
 
 Launch **Codex Desk** from Ubuntu's application menu, or run `codex-desk`.
@@ -62,14 +64,14 @@ The package includes the Electron runtime; Node.js is needed separately only for
 ### Portable AppImage
 
 ```bash
-chmod +x codex-desk-0.2.2-x86_64.AppImage
-./codex-desk-0.2.2-x86_64.AppImage
+chmod +x codex-desk-0.2.3-x86_64.AppImage
+./codex-desk-0.2.3-x86_64.AppImage
 ```
 
 If FUSE is unavailable, run without mounting the AppImage:
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.2-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.3-x86_64.AppImage
 ```
 
 The `.deb` is recommended on Ubuntu 24.04: its installer includes Electron's Ubuntu AppArmor integration. Do not disable Chromium's sandbox to work around an installation problem. See [Troubleshooting](docs/TROUBLESHOOTING.md).
@@ -83,15 +85,17 @@ The `.deb` is recommended on Ubuntu 24.04: its installer includes Electron's Ubu
 
 **Default mode:** follow your effective Codex CLI configuration. Read-only, Standard, and YOLO are available as explicit choices.
 
-| Shortcut      | Action               |
-| ------------- | -------------------- |
-| `Ctrl+N`      | New conversation     |
-| `Ctrl+K`      | Search conversations |
-| `Ctrl+,`      | Settings             |
-| `Enter`       | Send                 |
-| `Shift+Enter` | Newline              |
+| Shortcut      | Action                      |
+| ------------- | --------------------------- |
+| `Ctrl+N`      | New conversation            |
+| `Ctrl+K`      | Search conversations        |
+| `Ctrl+,`      | Settings                    |
+| `Enter`       | Send / steer a running task |
+| `Shift+Enter` | Newline                     |
 
-Language: **Settings → General → Language**. Appearance preferences are saved automatically.
+Language: **Settings → General → Language**. Font size: **Settings → General → Font size**. Appearance preferences are saved automatically. The font slider scales Desk and the embedded CLI; native Ubuntu Terminal keeps its own profile.
+
+Steering uses the current CLI turn and its settings. A rejected steer leaves your draft and attachments in the composer. Slash commands keep their own command behavior.
 
 ## CLI ↔ Desk synchronization
 
@@ -199,6 +203,8 @@ npx tsx scripts/live-sync.ts --turns  # real TUI ↔ Desk messages and goals; us
 ```
 
 Terminal and native checks automatically use a private Xvfb display and D-Bus session, without starting user desktop services. The live-turn check archives only the test conversation it creates. No live Codex checks run in CI.
+
+`npm run test:steer` validates the installed Codex CLI with a separate home, server and loopback Responses fixture: bidirectional steering in one turn, settings inheritance and stale/completed-turn rejection. It uses no account or external model request.
 
 ## Design and license
 

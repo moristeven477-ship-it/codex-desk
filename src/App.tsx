@@ -43,6 +43,7 @@ import { StatusPanel } from './components/StatusPanel';
 import { CliTerminal } from './components/CliTerminal';
 import { CompletionToast } from './components/CompletionToast';
 import { StartupModePicker } from './components/StartupModePicker';
+import { DEFAULT_FONT_SIZE } from './shared/appearance';
 
 export function App() {
   const desk = useDesk();
@@ -50,6 +51,9 @@ export function App() {
     document.documentElement.dataset.theme = desk.boot.settings.theme;
     document.documentElement.lang = desk.boot.settings.locale === 'zh' ? 'zh-CN' : 'en';
   }, [desk.boot.settings.theme, desk.boot.settings.locale]);
+  useEffect(() => {
+    document.documentElement.style.fontSize = `${(16 * desk.boot.settings.fontSize) / DEFAULT_FONT_SIZE}px`;
+  }, [desk.boot.settings.fontSize]);
   return (
     <LocaleContext value={desk.boot.settings.locale}>
       <Workspace desk={desk} />
@@ -781,6 +785,8 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
             archived={desk.archived && !!threadId}
             blocked={thread?.syncState === 'external'}
             onSend={desk.send}
+            onSteer={desk.steer}
+            activeTurnId={turn?.id}
             draft={draft}
             onDraft={setDraft}
             inputRef={inputRef}
@@ -894,7 +900,9 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
       {statusPanel && (
         <StatusPanel boot={boot} thread={thread} usage={desk.usage} onClose={() => setStatusPanel(false)} />
       )}
-      {cliPanel && <CliTerminal {...cliPanel} onClose={() => setCliPanel(null)} />}
+      {cliPanel && (
+        <CliTerminal {...cliPanel} fontSize={boot.settings.fontSize} onClose={() => setCliPanel(null)} />
+      )}
       {renaming && (
         <Dialog title={t('重命名会话', 'Rename conversation')} onClose={() => setRenaming(false)}>
           <form

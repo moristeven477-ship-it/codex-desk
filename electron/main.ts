@@ -1,4 +1,14 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell, Menu, Notification } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  ipcMain,
+  nativeImage,
+  shell,
+  Menu,
+  Notification,
+} from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readFile, stat } from 'node:fs/promises';
@@ -122,6 +132,11 @@ else {
         } catch (error) {
           return { ok: false, error: error instanceof Error ? error.message : String(error) };
         }
+      });
+      ipcMain.handle('desk:copy-text', async (event, value: unknown) => {
+        trusted(event);
+        if (typeof value !== 'string' || value.length > 4_000_000) throw new Error('Invalid clipboard text.');
+        await clipboard.writeText(value);
       });
       ipcMain.handle('desk:open-terminal', async (event, threadId: unknown) => {
         trusted(event);

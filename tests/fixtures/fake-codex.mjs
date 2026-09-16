@@ -69,6 +69,7 @@ const goals = new Map();
 const settings = new Map();
 const loaded = new Set(['fixture-history']);
 let lastTurnParams;
+let lastSteerParams;
 let settingsDelay = 0;
 const currentSettings = (thread) =>
   settings.get(thread.id) || {
@@ -349,6 +350,25 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         setTimeout(() => finish(thread, turn, 'Done. Your local Codex conversation is working.'), 100);
       break;
     }
+    case 'turn/steer': {
+      const turn = thread?.turns.findLast((turn) => turn.status === 'inProgress');
+      if (!turn || turn.id !== p.expectedTurnId) {
+        write({
+          id: message.id,
+          error: {
+            code: -32600,
+            message: turn ? 'Expected turn ID does not match the active turn.' : 'No active turn to steer.',
+          },
+        });
+        break;
+      }
+      lastSteerParams = p;
+      const user = { id: `steer-${turn.id}-${turn.items.length}`, type: 'userMessage', content: p.input };
+      turn.items.push(user);
+      reply({ turnId: turn.id });
+      notify('item/completed', { threadId: thread.id, turnId: turn.id, item: user });
+      break;
+    }
     case 'turn/interrupt': {
       const turn = thread.turns.find((t) => t.id === p.turnId);
       turn.status = 'interrupted';
@@ -374,6 +394,9 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       break;
     case 'test.lastTurn':
       reply(lastTurnParams || {});
+      break;
+    case 'test.lastSteer':
+      reply(lastSteerParams || {});
       break;
     case 'test.hang':
       break;

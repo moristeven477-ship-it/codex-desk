@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowUp, Square, Paperclip, X, Loader2, Slash, ListChecks } from 'lucide-react';
+import { ArrowUp, Square, Paperclip, X, Loader2, Slash, ListChecks, CornerUpRight } from 'lucide-react';
 import type {
   AccessMode,
   CollaborationMode,
@@ -22,6 +22,8 @@ export function Composer({
   sending,
   running,
   onSend,
+  onSteer,
+  activeTurnId,
   onStop,
   draft,
   onDraft,
@@ -50,6 +52,8 @@ export function Composer({
     images: string[],
     mode?: CollaborationMode,
   ) => Promise<boolean>;
+  onSteer: (expectedTurnId: string, text: string, images: string[]) => Promise<boolean>;
+  activeTurnId?: string;
   onCommand: (name: string, args: string) => Promise<boolean>;
   onStop: () => void;
   draft: string;
@@ -81,6 +85,10 @@ export function Composer({
     inputRef.current?.focus();
   }, [inputRef]);
   const [images, setImages] = useState<ImageAttachment[]>([]);
+  const [steerSent, setSteerSent] = useState(false);
+  const latestDraft = useRef(draft);
+  latestDraft.current = draft;
+  useEffect(() => setSteerSent(false), [activeTurnId]);
   const [importing, setImporting] = useState(false);
   const importingRef = useRef(false),
     mounted = useRef(true);
@@ -166,22 +174,29 @@ export function Composer({
       }
       return;
     }
-    if (disabled || running || lock.current || (!draft.trim() && !images.length)) return;
+    if (disabled || lock.current || (!draft.trim() && !images.length)) return;
     lock.current = true;
     try {
-      if (
-        await onSend(
-          draft,
-          modelId,
-          effort,
-          startup ? undefined : chosenAccess,
-          images.map((i) => i.path),
-          modeOverride,
-        )
-      ) {
-        onDraft('');
-        setImages([]);
-        clearOverrides();
+      const sent = running
+        ? !!activeTurnId &&
+          (await onSteer(
+            activeTurnId,
+            draft,
+            images.map((i) => i.path),
+          ))
+        : await onSend(
+            draft,
+            modelId,
+            effort,
+            startup ? undefined : chosenAccess,
+            images.map((i) => i.path),
+            modeOverride,
+          );
+      if (sent) {
+        if (latestDraft.current === draft) onDraft('');
+        setImages((current) => current.filter((image) => !images.some((sent) => sent.path === image.path)));
+        if (running) setSteerSent(true);
+        else clearOverrides();
       }
     } finally {
       lock.current = false;
@@ -289,6 +304,7 @@ export function Composer({
           ref={inputRef}
           value={draft}
           onChange={(e) => {
+            setSteerSent(false);
             onDraft(e.target.value);
             if (e.target.value === '/') setCommandsOpen(true);
           }}
@@ -306,7 +322,7 @@ export function Composer({
             archived
               ? t('恢复此会话后继续', 'Restore this conversation to continue')
               : running
-                ? t('写下接下来的想法…', 'Draft your next thought…')
+                ? t('补充说明或调整方向，Enter 插话…', 'Add details or change direction. Enter to steer…')
                 : t('描述任务，剩下的交给 Codex…', 'Describe a task for Codex…')
           }
           onKeyDown={(e) => {
@@ -364,27 +380,45 @@ export function Composer({
               />
             )}
           </div>
-          {running ? (
+          <div className="composer-send-actions">
+            {running && (
+              <button
+                className="send-button stop-button"
+                onClick={onStop}
+                aria-label={t('停止任务', 'Stop task')}
+                title={t('停止任务', 'Stop task')}
+              >
+                <Square size={14} fill="currentColor" />
+              </button>
+            )}
             <button
-              className="send-button stop-button"
-              onClick={onStop}
-              aria-label={t('停止任务', 'Stop task')}
-              title={t('停止任务', 'Stop task')}
-            >
-              <Square size={14} fill="currentColor" />
-            </button>
-          ) : (
-            <button
-              className="send-button"
+              className={`send-button ${running ? 'steer-button' : ''}`}
               onClick={() => void submit()}
               disabled={disabled || importing || (!draft.trim() && !images.length)}
-              aria-label={t('发送消息', 'Send message')}
+              aria-label={running ? t('插话', 'Steer') : t('发送消息', 'Send message')}
+              title={
+                running
+                  ? t('追加到当前任务 · Enter', 'Add to the running task · Enter')
+                  : t('发送消息', 'Send message')
+              }
             >
-              {sending ? <Loader2 size={17} className="spin" /> : <ArrowUp size={19} strokeWidth={2.5} />}
+              {sending ? (
+                <Loader2 size={17} className="spin" />
+              ) : running ? (
+                <CornerUpRight size={17} />
+              ) : (
+                <ArrowUp size={19} strokeWidth={2.5} />
+              )}
+              {running && <span>{t('插话', 'Steer')}</span>}
             </button>
-          )}
+          </div>
         </div>
       </div>
+      {steerSent && running && (
+        <div className="steer-status" role="status">
+          {t('插话已发送，Codex 将在当前任务中处理。', 'Steer sent. Codex will use it in the current task.')}
+        </div>
+      )}
       <div className="composer-caption">
         <PermissionPicker
           openSignal={permissionsOpen}

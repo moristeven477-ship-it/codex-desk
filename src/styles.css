@@ -56,19 +56,19 @@
 }
 .command-options strong {
   display: block;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-family: var(--mono);
   font-weight: 550;
 }
 .command-options small {
   display: block;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .command-route {
   margin-left: auto;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 0.625rem;
   white-space: nowrap;
 }
 .command-empty {
@@ -87,7 +87,7 @@
   border-radius: 10px;
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .composer-mode button {
   margin-left: auto;
@@ -100,7 +100,7 @@
   border-radius: 20px;
   padding: 5px 11px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 0.6875rem;
   white-space: nowrap;
 }
 .goal-badge.active {
@@ -169,7 +169,7 @@
 .goal-panel label {
   display: grid;
   gap: 7px;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .goal-panel textarea,
 .goal-panel input {
@@ -228,14 +228,14 @@
   margin-bottom: 14px;
 }
 .terminal-command code {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--accent);
   overflow-wrap: anywhere;
   max-width: 55%;
 }
 .terminal-command small {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .embedded-terminal {
   height: min(60vh, 620px);
@@ -262,7 +262,7 @@
 body {
   margin: 0;
   font-family: Inter, 'Noto Sans', 'Noto Sans CJK SC', 'Ubuntu', system-ui, sans-serif;
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1.55;
   color: var(--text);
   background: var(--bg);
@@ -340,7 +340,7 @@ strong {
   font-weight: 550;
 }
 kbd {
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 400;
   color: var(--muted);
   white-space: nowrap;
@@ -386,7 +386,7 @@ kbd {
   gap: 7px;
   padding: 8px 13px;
   border-radius: 7px;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 550;
 }
 .primary-button {
@@ -408,7 +408,7 @@ kbd {
   align-items: center;
   gap: 6px;
   color: var(--secondary);
-  font-size: 12px;
+  font-size: 0.75rem;
   padding: 4px 2px;
 }
 .text-button:hover {
@@ -478,7 +478,7 @@ kbd {
   gap: 9px;
   padding-left: 17px;
   width: 300px;
-  font-size: 13px;
+  font-size: 0.8125rem;
   letter-spacing: -0.2px;
 }
 .brand img {
@@ -494,7 +494,7 @@ kbd {
 }
 .ubuntu-badge {
   margin-left: 3px;
-  font-size: 9px;
+  font-size: 0.5625rem;
   border: 1px solid var(--border-strong);
   border-radius: 4px;
   padding: 0 5px;
@@ -506,7 +506,7 @@ kbd {
   align-items: center;
   gap: 8px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 0.6875rem;
   letter-spacing: 0.25px;
 }
 .titlebar-center .status-dot {
@@ -571,11 +571,11 @@ kbd {
 .new-conversation > span {
   flex: 1;
   text-align: left;
-  font-size: 12px;
+  font-size: 0.75rem;
   white-space: nowrap;
 }
 .new-conversation kbd {
-  font-size: 9px;
+  font-size: 0.5625rem;
 }
 .search-box {
   display: flex;
@@ -589,7 +589,7 @@ kbd {
   min-width: 0;
   flex: 1;
   background: transparent;
-  font-size: 12px;
+  font-size: 0.75rem;
   height: 29px;
 }
 .search-box input:focus {
@@ -613,7 +613,7 @@ kbd {
   border-radius: 6px;
   width: 100%;
   color: var(--secondary);
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .nav-item:hover {
   background: var(--hover);
@@ -630,7 +630,7 @@ kbd {
   margin: 23px 4px 6px 10px;
 }
 .section-heading > span {
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 600;
   color: var(--muted);
   letter-spacing: 1.2px;
@@ -655,7 +655,7 @@ kbd {
   flex: 1;
   text-align: left;
   padding: 8px 11px;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .project-row span {
   white-space: nowrap;
@@ -687,7 +687,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 9px;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--muted);
   padding: 9px 11px;
   width: 100%;
@@ -740,12 +740,12 @@ kbd {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .thread-info > small {
   display: block;
   margin-top: 4px;
-  font-size: 10px;
+  font-size: 0.625rem;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
@@ -754,7 +754,7 @@ kbd {
 .empty-threads {
   color: var(--muted);
   padding: 7px 11px;
-  font-size: 11px;
+  font-size: 0.6875rem;
   line-height: 1.8;
 }
 .load-more {
@@ -765,7 +765,7 @@ kbd {
   gap: 6px;
   width: 100%;
   padding: 12px;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .sidebar-bottom {
   padding: 15px 17px;
@@ -781,12 +781,12 @@ kbd {
 }
 .connection-status strong {
   display: block;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 500;
 }
 .connection-status small {
   display: block;
-  font-size: 10px;
+  font-size: 0.625rem;
   color: var(--muted);
   margin-top: 2px;
 }
@@ -830,7 +830,7 @@ kbd {
   gap: 12px;
   align-items: center;
   min-width: 0;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .breadcrumb-project {
   flex-shrink: 0;
@@ -884,7 +884,7 @@ kbd {
   text-align: left;
   padding: 9px 10px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .dropdown-menu button:hover {
   background: var(--hover);
@@ -895,7 +895,7 @@ kbd {
   align-items: center;
   gap: 9px;
   padding: 10px 20px;
-  font-size: 12px;
+  font-size: 0.75rem;
   line-height: 1.6;
   flex-shrink: 0;
 }
@@ -914,7 +914,7 @@ kbd {
 .connection-banner > button {
   white-space: nowrap;
   text-decoration: underline;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .connection-banner {
   color: var(--secondary);
@@ -949,7 +949,7 @@ kbd {
 }
 .welcome-eyebrow {
   color: var(--muted);
-  font-size: 9px;
+  font-size: 0.5625rem;
   font-weight: 500;
   letter-spacing: 1.7px;
   display: flex;
@@ -965,7 +965,7 @@ kbd {
   background: var(--muted);
 }
 .welcome h1 {
-  font-size: clamp(24px, 2.4vw, 34px);
+  font-size: clamp(1.5rem, 2.4vw, 2.125rem);
   font-weight: 450;
   letter-spacing: -0.8px;
   line-height: 1.5;
@@ -973,7 +973,7 @@ kbd {
 }
 .welcome-subtitle {
   color: var(--secondary);
-  font-size: 12px;
+  font-size: 0.75rem;
   margin: 0;
   line-height: 1.9;
 }
@@ -986,7 +986,7 @@ kbd {
   border: 1px solid var(--border-strong);
   background: var(--raised);
   border-radius: 7px;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .open-project-hero:hover {
   background: var(--hover);
@@ -1012,7 +1012,7 @@ kbd {
   text-align: left;
 }
 .startup-modes legend {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--muted);
   margin-bottom: 10px;
 }
@@ -1050,13 +1050,13 @@ kbd {
   color: var(--muted);
 }
 .startup-mode-options strong {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
 }
 .startup-mode-options span {
   grid-column: 1 / -1;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 0.625rem;
   line-height: 1.5;
 }
 @media (max-width: 1100px) {
@@ -1084,13 +1084,13 @@ kbd {
 }
 .suggestions strong {
   display: block;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
   margin-bottom: 5px;
 }
 .suggestions button > span {
   display: block;
-  font-size: 10px;
+  font-size: 0.625rem;
   color: var(--muted);
 }
 .suggestion-arrow {
@@ -1108,7 +1108,7 @@ kbd {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  font-size: 10px;
+  font-size: 0.625rem;
   letter-spacing: 0.2px;
   color: var(--muted);
   margin-top: 24px;
@@ -1151,7 +1151,7 @@ kbd {
   width: 100%;
   min-height: 76px;
   max-height: 200px;
-  font-size: 13px;
+  font-size: 0.8125rem;
   padding: 17px 18px 8px;
   line-height: 1.8;
 }
@@ -1193,7 +1193,7 @@ kbd {
   min-width: 0;
   max-width: 100%;
   padding: 4px 18px 4px 2px;
-  font-size: 11px;
+  font-size: 0.6875rem;
   cursor: pointer;
   outline: none;
   color: inherit;
@@ -1247,7 +1247,7 @@ select option {
   gap: 12px;
   padding: 10px 3px 0;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 0.5625rem;
 }
 .composer-caption > span {
   overflow: hidden;
@@ -1259,7 +1259,7 @@ select option {
   color: var(--muted);
 }
 .permission-select select {
-  font-size: 9px;
+  font-size: 0.5625rem;
   padding-top: 0;
   padding-bottom: 0;
 }
@@ -1271,7 +1271,7 @@ select option {
   align-items: center;
   gap: 7px;
   padding: 12px 17px 0;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--muted);
 }
 .completion-toast {
@@ -1303,11 +1303,11 @@ select option {
   gap: 4px;
 }
 .completion-toast strong {
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .completion-toast span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .completion-toast button {
   white-space: nowrap;
@@ -1346,7 +1346,7 @@ select option {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 9px;
+  font-size: 0.5625rem;
   color: var(--muted);
   margin-top: 3px;
 }
@@ -1358,7 +1358,7 @@ select option {
   flex-shrink: 0;
   padding: 0 19px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 0.5625rem;
   border-top: 1px solid var(--border);
 }
 .main-statusbar > span {
@@ -1400,7 +1400,8 @@ select option {
 }
 .user-message {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
 }
 .user-bubble {
   background: var(--bubble);
@@ -1412,14 +1413,14 @@ select option {
 .user-text {
   white-space: pre-wrap;
   line-height: 1.85;
-  font-size: 13px;
+  font-size: 0.8125rem;
   overflow-wrap: anywhere;
 }
 .attachment-label {
   display: flex;
   gap: 6px;
   align-items: center;
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--secondary);
   margin-top: 8px;
 }
@@ -1427,7 +1428,7 @@ select option {
   display: flex;
   gap: 8px;
   align-items: center;
-  font-size: 11px;
+  font-size: 0.6875rem;
   margin-bottom: 13px;
   color: var(--secondary);
 }
@@ -1443,7 +1444,7 @@ select option {
   font-family: monospace;
 }
 .badge {
-  font-size: 9px;
+  font-size: 0.5625rem;
   color: var(--muted);
   border: 1px solid var(--border-strong);
   padding: 0 5px;
@@ -1451,20 +1452,20 @@ select option {
 }
 .markdown {
   line-height: 1.85;
-  font-size: 13px;
+  font-size: 0.8125rem;
   overflow-wrap: anywhere;
 }
 .markdown p {
   margin: 0 0 13px;
 }
 .markdown h1 {
-  font-size: 22px;
+  font-size: 1.375rem;
 }
 .markdown h2 {
-  font-size: 19px;
+  font-size: 1.1875rem;
 }
 .markdown h3 {
-  font-size: 16px;
+  font-size: 1rem;
 }
 .markdown h1,
 .markdown h2,
@@ -1484,7 +1485,7 @@ select option {
   border: 1px solid var(--border-strong);
   background: var(--code);
   border-radius: 8px;
-  font-size: 11px;
+  font-size: 0.6875rem;
   line-height: 1.85;
   overflow-x: auto;
 }
@@ -1492,7 +1493,7 @@ select option {
   padding: 2px 5px;
   background: var(--inline-code);
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .markdown blockquote {
   border-left: 2px solid var(--accent-dim);
@@ -1502,7 +1503,7 @@ select option {
 }
 .markdown table {
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 0.75rem;
   display: block;
   overflow-x: auto;
 }
@@ -1520,14 +1521,23 @@ select option {
   border-top: 1px solid var(--border);
   margin: 25px 0;
 }
-.copy-button {
-  opacity: 0.35;
-  margin-left: -5px;
-  width: 24px;
-  height: 24px;
+.message-actions {
+  display: flex;
+  margin-top: 6px;
 }
-.assistant-message:hover .copy-button {
-  opacity: 1;
+.copy-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 7px;
+  border-radius: 6px;
+  color: var(--secondary);
+  font-size: 0.6875rem;
+}
+.copy-button:hover,
+.copy-button:focus-visible {
+  color: var(--text);
+  background: var(--hover);
 }
 .commentary-message .markdown {
   color: var(--secondary);
@@ -1546,7 +1556,7 @@ select option {
   cursor: pointer;
   color: var(--secondary);
   list-style: none;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .activity summary::-webkit-details-marker {
   display: none;
@@ -1557,11 +1567,11 @@ select option {
   white-space: nowrap;
   text-overflow: ellipsis;
   font-family: 'DejaVu Sans Mono', monospace;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 .activity > summary > small {
   color: var(--muted);
-  font-size: 9px;
+  font-size: 0.5625rem;
 }
 .activity .disclosure {
   opacity: 0.6;
@@ -1578,7 +1588,7 @@ select option {
 .activity-body {
   border-top: 1px solid var(--border);
   padding: 12px;
-  font-size: 11px;
+  font-size: 0.6875rem;
   max-height: 350px;
   overflow: auto;
 }
@@ -1586,7 +1596,7 @@ select option {
   margin: 0 0 5px;
   white-space: pre-wrap;
   word-break: break-word;
-  font-size: 10px;
+  font-size: 0.625rem;
   line-height: 1.8;
 }
 .activity-body p {
@@ -1595,7 +1605,7 @@ select option {
 }
 .turn-note,
 .turn-error {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--muted);
   margin: 12px 0;
 }
@@ -1608,7 +1618,7 @@ select option {
   gap: 9px;
   color: var(--secondary);
   padding: 15px 0;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .ellipsis {
   margin-left: -6px;
@@ -1633,7 +1643,7 @@ select option {
   color: var(--muted);
   text-align: center;
   padding: 80px 15px;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .chat-loading {
   display: flex;
@@ -1650,7 +1660,7 @@ select option {
   gap: 7px;
   margin: 0 auto 28px;
   color: var(--secondary);
-  font-size: 11px;
+  font-size: 0.6875rem;
   border: 1px solid var(--border-strong);
   padding: 6px 13px;
   border-radius: 6px;
@@ -1670,7 +1680,7 @@ select option {
   padding: 17px;
   margin: 8px 0;
   background: var(--approval-bg);
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .approval-title {
   display: flex;
@@ -1681,13 +1691,13 @@ select option {
 }
 .approval-title strong {
   flex: 1;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .approval-card p {
   line-height: 1.7;
 }
 .approval-card pre {
-  font-size: 10px;
+  font-size: 0.625rem;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   line-height: 1.7;
@@ -1712,7 +1722,7 @@ select option {
   padding: 0;
 }
 .approval-card legend {
-  font-size: 12px;
+  font-size: 0.75rem;
   margin-bottom: 10px;
 }
 .question-option {
@@ -1733,7 +1743,7 @@ select option {
 .question-option small {
   display: block;
   color: var(--secondary);
-  font-size: 10px;
+  font-size: 0.625rem;
   margin-top: 3px;
 }
 .question-option input {
@@ -1747,7 +1757,7 @@ select option {
   border-radius: 5px;
   padding: 9px;
   width: 100%;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .elicitation-form textarea {
   margin-top: 10px;
@@ -1756,7 +1766,7 @@ select option {
   margin: 4px 30px 0;
   border: 1px solid var(--border-strong);
   border-radius: 7px;
-  font-size: 11px;
+  font-size: 0.6875rem;
   flex-shrink: 0;
   max-height: 25vh;
   overflow-y: auto;
@@ -1789,7 +1799,7 @@ select option {
   justify-content: center;
   gap: 10px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 0.6875rem;
   padding: 8px;
 }
 .inspector {
@@ -1807,7 +1817,7 @@ select option {
   height: 57px;
   padding: 0 13px 0 18px;
   border-bottom: 1px solid var(--border);
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--secondary);
   flex-shrink: 0;
 }
@@ -1822,14 +1832,14 @@ select option {
   color: var(--secondary);
 }
 .inspector-project strong {
-  font-size: 12px;
+  font-size: 0.75rem;
   max-width: 140px;
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
 }
 .branch {
-  font-size: 9px;
+  font-size: 0.5625rem;
   color: var(--muted);
   display: inline-flex;
   align-items: center;
@@ -1856,7 +1866,7 @@ select option {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .inspector-tabs button.active {
   border-color: var(--accent);
@@ -1869,7 +1879,7 @@ select option {
   min-width: 16px;
   text-align: center;
   border-radius: 4px;
-  font-size: 9px;
+  font-size: 0.5625rem;
 }
 .file-tree,
 .changes-list {
@@ -1888,7 +1898,7 @@ select option {
   padding-right: 12px;
   text-align: left;
   color: var(--secondary);
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .file-row:hover {
   background: var(--hover);
@@ -1913,7 +1923,7 @@ select option {
   transform: rotate(90deg);
 }
 .tree-empty {
-  font-size: 10px;
+  font-size: 0.625rem;
   color: var(--muted);
   padding: 4px 20px;
 }
@@ -1926,7 +1936,7 @@ select option {
   text-align: center;
   padding: 55px 22px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .inspector-empty > svg {
   opacity: 0.55;
@@ -1936,7 +1946,7 @@ select option {
   margin: 15px 0 8px;
 }
 .inspector-empty small {
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 .inspector-footer {
   height: 27px;
@@ -1945,7 +1955,7 @@ select option {
   gap: 6px;
   border-top: 1px solid var(--border);
   padding: 0 14px;
-  font-size: 9px;
+  font-size: 0.5625rem;
   color: var(--muted);
   flex-shrink: 0;
   margin-top: auto;
@@ -1958,7 +1968,7 @@ select option {
 .change-summary {
   display: flex;
   gap: 7px;
-  font-size: 10px;
+  font-size: 0.625rem;
   padding: 10px 18px 14px;
 }
 .change-summary > span:first-child {
@@ -1972,7 +1982,7 @@ select option {
   padding: 7px 18px;
   width: 100%;
   text-align: left;
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--secondary);
 }
 .changed-file:hover {
@@ -1985,7 +1995,7 @@ select option {
   white-space: nowrap;
 }
 .changed-file > b {
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 400;
 }
 .file-preview {
@@ -2000,7 +2010,7 @@ select option {
   gap: 5px;
   padding: 8px 10px;
   border-bottom: 1px solid var(--border);
-  font-size: 10px;
+  font-size: 0.625rem;
   color: var(--secondary);
 }
 .preview-heading > span {
@@ -2015,7 +2025,7 @@ select option {
   overflow: auto;
 }
 .code-preview pre {
-  font-size: 10px;
+  font-size: 0.625rem;
   line-height: 1.9;
   margin: 10px 0;
   min-width: max-content;
@@ -2080,12 +2090,12 @@ select option {
   border-bottom: 1px solid var(--border);
 }
 .dialog h2 {
-  font-size: 15px;
+  font-size: 0.9375rem;
   font-weight: 550;
   margin: 0;
 }
 .dialog h3 {
-  font-size: 17px;
+  font-size: 1.0625rem;
   font-weight: 500;
   margin: 0 0 5px;
 }
@@ -2109,7 +2119,7 @@ select option {
   text-align: left;
   padding: 10px 12px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--secondary);
   margin-bottom: 4px;
 }
@@ -2120,7 +2130,7 @@ select option {
 .settings-version {
   margin-top: auto;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 0.625rem;
   line-height: 1.8;
   padding: 20px 12px 0;
 }
@@ -2130,7 +2140,7 @@ select option {
   min-width: 0;
 }
 .settings-content > p {
-  font-size: 11px;
+  font-size: 0.6875rem;
   line-height: 1.7;
   margin: 5px 0 24px;
 }
@@ -2141,7 +2151,7 @@ select option {
   gap: 12px;
   padding: 22px 0;
   border-bottom: 1px solid var(--border);
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .setting-row > div:first-child {
   display: flex;
@@ -2154,7 +2164,7 @@ select option {
   border: 1px solid var(--border-strong);
   border-radius: 5px;
   padding: 6px 9px;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .segmented {
   display: flex;
@@ -2167,7 +2177,7 @@ select option {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 10px;
+  font-size: 0.625rem;
   padding: 5px 9px;
   border-radius: 4px;
   color: var(--muted);
@@ -2187,15 +2197,15 @@ select option {
   height: 38px;
 }
 .about-card strong {
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .about-card p {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 0.625rem;
   margin: 3px 0 8px;
 }
 .about-card button {
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 .connection-card {
   display: flex;
@@ -2209,11 +2219,11 @@ select option {
 }
 .connection-card strong {
   display: block;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .connection-card small {
   display: block;
-  font-size: 9px;
+  font-size: 0.5625rem;
   color: var(--muted);
   margin-top: 4px;
   word-break: break-all;
@@ -2222,7 +2232,7 @@ select option {
   display: flex;
   flex-direction: column;
   gap: 7px;
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--secondary);
   margin: 16px 0;
 }
@@ -2231,10 +2241,10 @@ select option {
   background: var(--input);
   border-radius: 6px;
   padding: 9px 11px;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .settings-help {
-  font-size: 10px !important;
+  font-size: 0.625rem !important;
   color: var(--muted);
   margin: 10px 0 !important;
 }
@@ -2247,10 +2257,10 @@ select option {
   border-top: 1px solid var(--border);
 }
 .account-row strong {
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .account-row p {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--muted);
   margin: 4px 0;
   overflow-wrap: anywhere;
@@ -2267,7 +2277,7 @@ select option {
   display: flex;
   gap: 5px;
   align-items: center;
-  font-size: 10px;
+  font-size: 0.625rem;
   color: var(--accent);
 }
 .rename-form {
@@ -2305,7 +2315,7 @@ select option {
     display: none;
   }
   .titlebar-center {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .brand,
   .window-controls {
@@ -2328,7 +2338,7 @@ select option {
     padding: 0 17px;
   }
   .welcome h1 {
-    font-size: 27px;
+    font-size: 1.6875rem;
   }
   .composer-caption > span {
     display: none;
@@ -2353,7 +2363,7 @@ select option {
   gap: 8px;
   width: 100%;
   color: var(--amber);
-  font-size: 11px;
+  font-size: 0.6875rem;
   padding: 5px 0 14px;
 }
 .picker-trigger {
@@ -2363,7 +2373,7 @@ select option {
   color: var(--secondary);
   border-radius: 7px;
   padding: 6px 8px;
-  font-size: 12px;
+  font-size: 0.75rem;
   max-width: 240px;
   text-align: left;
 }
@@ -2381,7 +2391,7 @@ select option {
   color: var(--text);
 }
 .picker-trigger.compact {
-  font-size: 11px;
+  font-size: 0.6875rem;
   padding: 4px 5px;
   color: var(--muted);
 }
@@ -2402,7 +2412,7 @@ select option {
   box-shadow:
     0 16px 52px #0003,
     0 2px 8px #0001;
-  font-size: 12px;
+  font-size: 0.75rem;
   animation: choice-in 140ms ease-out;
 }
 .choice-popover-heading {
@@ -2412,7 +2422,7 @@ select option {
   padding: 12px 14px;
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 11px;
+  font-size: 0.6875rem;
   flex-shrink: 0;
 }
 .choice-online-dot {
@@ -2435,7 +2445,7 @@ select option {
   padding: 6px;
   color: var(--muted);
   border-radius: 7px;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .choice-tabs button[aria-selected='true'] {
   background: var(--raised);
@@ -2491,11 +2501,11 @@ select option {
   flex: 1;
 }
 .choice-title {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 550;
 }
 .choice-description {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--muted);
   line-height: 1.5;
   display: -webkit-box;
@@ -2508,7 +2518,7 @@ select option {
   display: flex;
   justify-content: flex-end;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 .choice-footer {
   padding: 11px 14px;
@@ -2517,7 +2527,7 @@ select option {
   align-items: center;
   gap: 8px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 0.625rem;
   flex-shrink: 0;
 }
 .sync-banner {
@@ -2527,7 +2537,7 @@ select option {
   padding: 13px 20px;
   background: var(--accent-soft);
   color: var(--secondary);
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .sync-banner > div {
   flex: 1;
@@ -2560,7 +2570,7 @@ select option {
 .sync-instructions p {
   color: var(--secondary);
   line-height: 1.7;
-  font-size: 12px;
+  font-size: 0.75rem;
   margin: 7px 0 0;
 }
 .sync-instructions {
@@ -2568,7 +2578,7 @@ select option {
   border-radius: 10px;
   background: var(--accent-soft);
   margin-bottom: 20px;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .sync-command {
   width: 100%;
@@ -2578,10 +2588,10 @@ select option {
   background: var(--input);
   padding: 12px;
   color: var(--text);
-  font: 11px/1.65 var(--mono);
+  font: 0.6875rem/1.65 var(--mono);
 }
 .sync-dialog-content > .muted {
-  font-size: 11px;
+  font-size: 0.6875rem;
   margin: 14px 0 20px;
 }
 .default-workspace-setting {
@@ -2608,4 +2618,84 @@ select option {
   gap: 5px;
   margin-right: 12px;
   font-size: inherit;
+}
+
+.font-size-setting {
+  padding: 22px 0;
+  border-bottom: 1px solid var(--border);
+}
+.font-size-heading,
+.font-size-heading label,
+.font-size-slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.font-size-heading {
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+}
+.font-size-heading label {
+  color: var(--secondary);
+  margin-right: auto;
+}
+.font-size-heading output {
+  font-variant-numeric: tabular-nums;
+}
+.font-size-slider {
+  margin-top: 16px;
+}
+.font-size-slider input {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.font-size-slider span:first-child {
+  font-size: 12px;
+}
+.font-size-slider span:last-child {
+  font-size: 22px;
+}
+.font-size-setting p {
+  font-size: 0.6875rem;
+  color: var(--secondary);
+  line-height: 1.7;
+}
+.font-size-preview {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--raised);
+  border: 1px solid var(--border-strong);
+  font-size: 0.8125rem;
+  line-height: 1.85;
+}
+.font-size-preview code {
+  color: var(--secondary);
+}
+.composer-send-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.steer-button {
+  display: flex;
+  gap: 5px;
+  width: auto;
+  padding: 0 10px;
+  font-size: 0.75rem;
+}
+.steer-status {
+  padding: 8px 3px 0;
+  font-size: 0.6875rem;
+  color: var(--accent);
+}
+.composer-toolbar,
+.composer-tools,
+.setting-row {
+  flex-wrap: wrap;
+}
+.composer-send-actions {
+  margin-left: auto;
 }

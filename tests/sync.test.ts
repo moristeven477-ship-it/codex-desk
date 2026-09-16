@@ -133,6 +133,93 @@ test('standalone writer remains readable and attaches to the same ID after relea
   }
 });
 
+test('steering shares the active CLI turn and images without overriding settings or starting another turn', async () => {
+  const f = await fixture();
+  try {
+    const thread = (await f.desk.handle('thread.create', { access: 'danger-full-access' })) as Thread;
+    await f.cli.request('thread/resume', { threadId: thread.id });
+    const started = await f.cli.request<{ turn: { id: string } }>('turn/start', {
+      threadId: thread.id,
+      input: [{ type: 'text', text: 'wait for directions from Desk' }],
+    });
+    const before = await f.cli.request('test.settings', { threadId: thread.id });
+    const image = path.join(f.root, 'pasted-image.png');
+    f.desk.authorizeImages([image]);
+    const received = eventWhere(
+      f.cli,
+      (event) =>
+        event.method === 'item/completed' &&
+        String((event.params?.item as { id: string })?.id).startsWith('steer-'),
+    );
+    assert.deepEqual(
+      await f.desk.handle('turn.steer', {
+        threadId: thread.id,
+        expectedTurnId: started.turn.id,
+        text: 'Use this screenshot instead',
+        images: [image],
+      }),
+      { turnId: started.turn.id },
+    );
+    assert.equal((await received).params?.turnId, started.turn.id);
+    const request = await f.cli.request<Record<string, unknown>>('test.lastSteer');
+    assert.deepEqual(Object.keys(request).sort(), ['expectedTurnId', 'input', 'threadId']);
+    assert.deepEqual(request.input, [
+      { type: 'text', text: 'Use this screenshot instead', text_elements: [] },
+      { type: 'localImage', path: image },
+    ]);
+    assert.deepEqual(await f.cli.request('test.settings', { threadId: thread.id }), before);
+    const receivedByDesk = eventWhere(
+      f.desk,
+      (event) =>
+        event.method === 'item/completed' &&
+        String((event.params?.item as { id: string })?.id).startsWith('steer-'),
+    );
+    await f.cli.request('turn/steer', {
+      threadId: thread.id,
+      expectedTurnId: started.turn.id,
+      input: [{ type: 'text', text: 'Follow-up from CLI' }],
+    });
+    await receivedByDesk;
+    const history = (await f.desk.handle('thread.read', { threadId: thread.id })) as Thread;
+    assert.equal(history.turns.length, 1);
+    assert.equal(history.turns[0].id, started.turn.id);
+    assert.equal(history.turns[0].items.filter((item) => item.type === 'userMessage').length, 3);
+    await assert.rejects(
+      f.desk.handle('turn.steer', {
+        threadId: thread.id,
+        expectedTurnId: 'stale-turn',
+        text: 'Reject stale steer',
+      }),
+      /does not match/,
+    );
+    await assert.rejects(
+      f.desk.handle('turn.steer', {
+        threadId: thread.id,
+        expectedTurnId: started.turn.id,
+        images: ['/unpicked/private.png'],
+      }),
+      /attachment picker/,
+    );
+    await assert.rejects(
+      f.desk.handle('turn.steer', {
+        threadId: thread.id,
+        expectedTurnId: started.turn.id,
+        text: 'No overrides',
+        access: 'read-only',
+      }),
+      /Unrecognized key/,
+    );
+    await f.cli.request('turn/interrupt', { threadId: thread.id, turnId: started.turn.id });
+    await assert.rejects(
+      f.desk.handle('turn.steer', { threadId: thread.id, expectedTurnId: started.turn.id, text: 'Too late' }),
+      /No active turn/,
+    );
+    assert.equal(((await f.desk.handle('thread.read', { threadId: thread.id })) as Thread).turns.length, 1);
+  } finally {
+    await f.close();
+  }
+});
+
 test('CLI settings win across opening and ordinary sends; only explicit Desk selection overrides YOLO', async () => {
   const f = await fixture();
   try {

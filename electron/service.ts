@@ -27,6 +27,12 @@ const turnArgs = z.object({
   images: z.array(z.string().max(4096)).max(8).default([]),
   collaborationMode: z.enum(['default', 'plan']).optional(),
 });
+const steerArgs = turnArgs
+  .pick({ threadId: true, text: true, images: true })
+  .extend({
+    expectedTurnId: text,
+  })
+  .strict();
 
 export class DeskService extends EventEmitter {
   readonly codex: CodexProcess;
@@ -539,6 +545,23 @@ export class DeskService extends EventEmitter {
         });
         // The protocol's turn/started notification is authoritative; it may precede this response.
         return result;
+      }
+      case 'turn.steer': {
+        const args = steerArgs.parse(params);
+        if (!args.text.trim() && !args.images.length) throw new Error('Enter a message.');
+        for (const image of args.images)
+          if (!this.imagePaths.has(image))
+            throw new Error('Attach images using the attachment picker or paste them into the composer.');
+        await this.resume(args.threadId);
+        // The server checks the expected ID atomically. Never turn a rejected steer into a new task.
+        return this.codex.request<{ turnId: string }>('turn/steer', {
+          threadId: args.threadId,
+          expectedTurnId: args.expectedTurnId,
+          input: [
+            ...(args.text.trim() ? [{ type: 'text', text: args.text, text_elements: [] }] : []),
+            ...args.images.map((file) => ({ type: 'localImage', path: file })),
+          ],
+        });
       }
       case 'turn.interrupt': {
         const args = z.object({ threadId: text, turnId: text }).parse(params);

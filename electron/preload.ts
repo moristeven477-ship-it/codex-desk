@@ -16,6 +16,7 @@ const bridge: NativeBridge = {
   },
   pickDirectory: () => ipcRenderer.invoke('desk:pick-directory'),
   pickImages: () => ipcRenderer.invoke('desk:pick-images'),
+  copyText: (text) => ipcRenderer.invoke('desk:copy-text', text),
   async importImages(images) {
     const response = await ipcRenderer.invoke('desk:import-images', images);
     if (!response.ok) throw new Error(response.error);

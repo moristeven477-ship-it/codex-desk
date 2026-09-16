@@ -53,6 +53,12 @@ New threads use the selected project or an automatically created default workspa
 
 Goals use `thread/goal/get`, `set`, and `clear`, and their corresponding notifications. Plan mode is carried as `collaborationMode` with the server's built-in instructions. The slash inventory is pinned to the CLI 0.154.0 source; terminal commands execute in the actual TUI, preserving upstream behavior, platform gates, and custom commands.
 
+## Message interaction
+
+Steering calls the official [`turn/steer`](https://learn.chatgpt.com/docs/app-server#steer-an-active-turn) method with the captured active `expectedTurnId`. The service accepts only text and authorized images, forwards no model/permission overrides, and never retries a rejected steer as a new turn. CLI notifications remain authoritative for message history. Accepted submissions clear only the submitted draft/attachments; later typing stays intact.
+
+Message copying uses a narrow, trusted-sender-validated clipboard-write IPC method. It writes the original text/Markdown, not the conversation or rendered HTML, without requesting renderer clipboard-read access. Font size is a bounded local preference: rem-based text scales from the 13 px default, and embedded xterm sizing updates without restarting its PTY. Preference writes are serialized and preview immediately; native terminal profiles and Codex settings are unaffected.
+
 ## Build
 
 ### Background Ubuntu terminals

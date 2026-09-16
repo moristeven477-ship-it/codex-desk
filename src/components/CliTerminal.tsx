@@ -7,20 +7,26 @@ import { Dialog } from './Dialog';
 import { request } from '../lib/useDesk';
 import { useT } from '../lib/i18n';
 import type { CodexEvent } from '../shared/types';
+import { DEFAULT_FONT_SIZE } from '../shared/appearance';
 
 export function CliTerminal({
   threadId,
   command,
+  fontSize,
   onClose,
 }: {
   threadId: string;
   command: string;
+  fontSize: number;
   onClose: () => void;
 }) {
   const t = useT();
   const root = useRef<HTMLDivElement>(null),
     terminal = useRef<XTerm | null>(null),
     session = useRef('');
+  const fitAddon = useRef<FitAddon | null>(null);
+  const currentFontSize = useRef(fontSize);
+  currentFontSize.current = fontSize;
   const [error, setError] = useState(''),
     [ready, setReady] = useState(false),
     [exited, setExited] = useState(false);
@@ -30,7 +36,7 @@ export function CliTerminal({
     const term = new XTerm({
       cursorBlink: true,
       fontFamily: "'Ubuntu Mono', 'DejaVu Sans Mono', monospace",
-      fontSize: 14,
+      fontSize: (14 * currentFontSize.current) / DEFAULT_FONT_SIZE,
       scrollback: 5000,
       theme: {
         background: '#10121b',
@@ -42,6 +48,7 @@ export function CliTerminal({
     });
     terminal.current = term;
     const fit = new FitAddon();
+    fitAddon.current = fit;
     term.loadAddon(fit);
     term.open(root.current);
     fit.fit();
@@ -100,10 +107,23 @@ export function CliTerminal({
       data.dispose();
       term.dispose();
       terminal.current = null;
+      fitAddon.current = null;
       if (session.current) void request('terminal.stop', { id: session.current }).catch(() => {});
       session.current = '';
     };
   }, [threadId]);
+  useEffect(() => {
+    const term = terminal.current;
+    if (!term) return;
+    term.options.fontSize = (14 * fontSize) / DEFAULT_FONT_SIZE;
+    fitAddon.current?.fit();
+    if (session.current)
+      void request('terminal.resize', {
+        id: session.current,
+        cols: Math.max(20, term.cols),
+        rows: Math.max(5, term.rows),
+      }).catch(() => {});
+  }, [fontSize]);
   // Keep commands as editable input. Enter is handled by the real TUI, including
   // its own pickers, feature gates and confirmation flows.
   async function insert() {

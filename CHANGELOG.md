@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.3
+
+- Add a live font-size slider under Settings → General (12–22 px), with a preview, reset and automatic persistence. Scale conversation text, composer, interface and embedded CLI text while keeping native Ubuntu Terminal preferences intact.
+- Add visible Copy actions to user messages as well as Codex replies/plans. Preserve exact plain text/Markdown and use validated native clipboard IPC with success and failure feedback.
+- Implement steering through the official `turn/steer` API. While a task runs, press Enter or click Steer to add text/images to the same turn; Stop remains a separate action. Inherit the CLI's active settings, validate the expected turn ID and preserve drafts/attachments if a steer is rejected.
+- Validate the installed Codex CLI with an isolated loopback Responses provider: a CLI-started turn accepts Desk and CLI steering, reaches the provider with both additions, completes as one turn and retains YOLO settings.
+
 ## 0.2.2
 
 - Automatically prepare a real Ubuntu Terminal tab when creating or selecting a conversation. The first window starts minimized; later tabs stay in the background and leave the selected tab and keyboard focus alone.

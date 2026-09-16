@@ -70,6 +70,16 @@ try {
   if (preferences.nodeIntegration || !preferences.contextIsolation || !preferences.sandbox)
     throw new Error('Unsafe renderer preferences');
   const composer = page.getByRole('textbox', { name: 'Message Codex' });
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('slider', { name: 'Font size', exact: true }).press('End');
+  await expect(composer).toHaveCSS('font-size', '22px');
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.reload();
+  await expect(composer).toHaveCSS('font-size', '22px');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Reset', exact: true }).click();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(composer).toHaveCSS('font-size', '13px');
   const png =
     'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAL0lEQVR4nO3OIQEAAAgDMKJSG0UUiHEzMb+a3ksqAQEBAQEBAQEBAQEBAQGBdOABxQdctdynpFgAAAAASUVORK5CYII=';
   await composer.fill('Native IPC smoke test');
@@ -110,6 +120,14 @@ try {
   await expect(page.locator('.markdown')).toContainText('Your local Codex conversation is working.');
   await expect(page.locator('.completion-toast')).toContainText('Task completed');
   await expect(page.getByRole('combobox', { name: 'Permission mode', exact: true })).toContainText('YOLO');
+  await page.locator('.user-message').getByRole('button', { name: 'Copy message', exact: true }).click();
+  expect(await desktop.evaluate(({ clipboard }) => clipboard.readText())).toBe(
+    process.env.DESK_TEST_CLIPBOARD === '1' ? 'Native IPC smoke test + pasted text' : 'Native IPC smoke test',
+  );
+  await page.locator('.assistant-message').getByRole('button', { name: 'Copy message', exact: true }).click();
+  expect(await desktop.evaluate(({ clipboard }) => clipboard.readText())).toBe(
+    'Done. Your local Codex conversation is working.',
+  );
   const history = await page.evaluate(async () => {
     const boot = await window.codexDesk.request('bootstrap');
     return window.codexDesk.request('thread.read', { threadId: boot.settings.lastThreadId });
@@ -146,6 +164,22 @@ try {
   expect(await readdir(path.join(directory, 'attachments'))).toEqual(before);
   await mkdir('test-results', { recursive: true });
   await page.screenshot({ path: 'test-results/native-ubuntu.png', animations: 'disabled' });
+  await composer.fill('wait for native steering');
+  await composer.press('Enter');
+  await expect(page.getByRole('button', { name: 'Steer', exact: true })).toBeVisible();
+  await composer.fill('Change direction from the real desktop UI');
+  await page.getByRole('button', { name: 'Steer', exact: true }).click();
+  await expect(page.locator('.steer-status')).toContainText('Steer sent');
+  await expect(page.locator('.user-text').last()).toHaveText('Change direction from the real desktop UI');
+  const steered = await page.evaluate(async () => {
+    const boot = await window.codexDesk.request('bootstrap');
+    return window.codexDesk.request('thread.read', { threadId: boot.settings.lastThreadId });
+  });
+  expect(steered.turns).toHaveLength(2);
+  expect(steered.turns[1].status).toBe('inProgress');
+  expect(steered.turns[1].items.filter((item) => item.type === 'userMessage')).toHaveLength(2);
+  await page.getByRole('button', { name: 'Stop task', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible();
   await page.getByRole('textbox', { name: 'Message Codex' }).fill('/goal');
   await page.getByRole('textbox', { name: 'Message Codex' }).press('Enter');
   await page
@@ -194,6 +228,9 @@ try {
           ? 'real Ctrl+V image and text on isolated display'
           : 'synthetic paste event',
       yoloStartup: 'passed',
+      messageCopy: 'user and assistant text verified against native clipboard',
+      fontSize: 'live preview, persistence after reload and reset',
+      steer: 'running turn accepts a second user message through native IPC',
       completionNotices: 'in-app toast + captured native notification click',
       rendererSandbox: preferences.sandbox,
       chromiumSandboxDisabledForTest: process.env.DESK_TEST_NO_SANDBOX === '1',

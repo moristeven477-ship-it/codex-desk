@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import type { AppState } from '../src/shared/types';
+import { DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE } from '../src/shared/appearance';
 
 export const settingsSchema = z.object({
   binaryPath: z.string().max(4096).default(''),
@@ -9,6 +10,7 @@ export const settingsSchema = z.object({
   defaultWorkspace: z.string().max(4096).default(''),
   locale: z.enum(['zh', 'en']).default('zh'),
   theme: z.enum(['dark', 'light']).default('dark'),
+  fontSize: z.number().int().min(MIN_FONT_SIZE).max(MAX_FONT_SIZE).default(DEFAULT_FONT_SIZE),
   lastProjectId: z.string().default(''),
   lastThreadId: z.string().default(''),
 });
@@ -19,6 +21,7 @@ export const settingsPatchSchema = z
     defaultWorkspace: settingsSchema.shape.defaultWorkspace.removeDefault(),
     locale: settingsSchema.shape.locale.removeDefault(),
     theme: settingsSchema.shape.theme.removeDefault(),
+    fontSize: settingsSchema.shape.fontSize.removeDefault(),
     lastProjectId: settingsSchema.shape.lastProjectId.removeDefault(),
     lastThreadId: settingsSchema.shape.lastThreadId.removeDefault(),
   })
@@ -30,6 +33,7 @@ const schema = z.object({
     defaultWorkspace: '',
     locale: 'zh',
     theme: 'dark',
+    fontSize: DEFAULT_FONT_SIZE,
     lastProjectId: '',
     lastThreadId: '',
   }),

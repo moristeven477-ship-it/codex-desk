@@ -71,6 +71,7 @@ const test = base.extend<{ setup: DeskService }>({
           },
           pickDirectory: () => w.__deskPick(),
           pickImages: async () => [],
+          copyText: (text) => navigator.clipboard.writeText(text),
           importImages: (images) =>
             w.__deskImport(images.map((image) => ({ ...image, bytes: Array.from(image.bytes) }))),
           openExternal: async () => {},
@@ -142,6 +143,143 @@ test('existing CLI history, new streamed turn, rename and archive', async ({ pag
   await expect(page.locator('.thread-list')).not.toContainText('A renamed conversation');
   await page.getByRole('button', { name: '切换归档会话' }).click();
   await expect(page.locator('.thread-list')).toContainText('A renamed conversation');
+});
+
+test('font slider previews, persists, resets and stays usable in English at the minimum window width', async ({
+  page,
+  setup,
+}) => {
+  await page.getByRole('button', { name: /Understand the project/ }).click();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  const slider = page.getByRole('slider', { name: '字体大小', exact: true });
+  await expect(slider).toHaveValue('13');
+  await slider.press('End');
+  await expect(page.locator('.markdown')).toHaveCSS('font-size', '22px');
+  await expect(page.locator('.composer textarea')).toHaveCSS('font-size', '22px');
+  await expect(page.locator('.user-text')).toHaveCSS('font-size', '22px');
+  await slider.press('ArrowLeft');
+  await slider.press('ArrowLeft');
+  await slider.press('ArrowLeft');
+  await expect.poll(() => setup.store.state.settings.fontSize).toBe(19);
+  await page.reload();
+  await expect(page.locator('.markdown')).toHaveCSS('font-size', '19px');
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await expect(slider).toHaveValue('19');
+  await page.getByRole('combobox', { name: '界面语言' }).selectOption('en');
+  await page.setViewportSize({ width: 880, height: 680 });
+  const englishSlider = page.getByRole('slider', { name: 'Font size', exact: true });
+  await englishSlider.press('End');
+  await expect(page.getByRole('button', { name: 'Reset', exact: true })).toBeVisible();
+  await expect(page.locator('.font-size-preview')).toHaveCSS('font-size', '22px');
+  const overflow = await page
+    .getByRole('dialog')
+    .evaluate((element) => element.scrollWidth > element.clientWidth);
+  expect(overflow).toBe(false);
+  await page.screenshot({ path: 'test-results/font-size-english.png', animations: 'disabled' });
+  await page.getByRole('button', { name: 'Reset', exact: true }).click();
+  await expect(englishSlider).toHaveValue('13');
+  await expect(page.locator('.markdown')).toHaveCSS('font-size', '13px');
+});
+
+test('user and assistant messages copy their exact text, with success and retry feedback', async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.getByRole('button', { name: /Understand the project/ }).click();
+  const reply = page.locator('.assistant-message');
+  await reply.getByRole('button', { name: '复制消息', exact: true }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    'This is **Atlas**, a small React workspace.',
+  );
+  await expect(reply.getByRole('button', { name: '已复制', exact: true })).toBeVisible();
+  const text = '原样复制 Unicode\n\n**literal markdown**\n`echo $HOME`';
+  const composer = page.getByRole('textbox', { name: '发送给 Codex 的消息' });
+  await composer.fill(text);
+  await composer.press('Enter');
+  const message = page.locator('.user-message').last();
+  await message.getByRole('button', { name: '复制消息', exact: true }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(text);
+  await expect(message.getByRole('button', { name: '已复制', exact: true })).toBeVisible();
+  await page.evaluate(() => {
+    window.codexDesk!.copyText = async () => {
+      throw new Error('Clipboard unavailable');
+    };
+  });
+  await page
+    .locator('.assistant-message')
+    .last()
+    .getByRole('button', { name: '复制消息', exact: true })
+    .click();
+  await expect(page.getByRole('alert')).toContainText('复制失败');
+  await page.evaluate(() => {
+    window.codexDesk!.copyText = (text) => navigator.clipboard.writeText(text);
+  });
+  await page
+    .locator('.assistant-message')
+    .last()
+    .getByRole('button', { name: '复制消息', exact: true })
+    .click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    'Done. Your local Codex conversation is working.',
+  );
+});
+
+test('running CLI tasks accept repeated text and image steering from Desk and preserve drafts on rejection', async ({
+  page,
+  setup,
+}) => {
+  await page.getByRole('button', { name: /Understand the project/ }).click();
+  const threadId = 'fixture-history';
+  const { turn } = await setup.codex.request<{ turn: { id: string } }>('turn/start', {
+    threadId,
+    input: [{ type: 'text', text: 'wait for Desk to steer' }],
+  });
+  const composer = page.getByRole('textbox', { name: '发送给 Codex 的消息' });
+  const steer = page.getByRole('button', { name: '插话', exact: true });
+  await expect(steer).toBeDisabled();
+  await composer.fill('先检查这个截图');
+  await pasteFixture(page);
+  await steer.click();
+  await expect(page.locator('.steer-status')).toContainText('插话已发送');
+  await expect(composer).toHaveValue('');
+  await expect(page.locator('.image-attachments img')).toHaveCount(0);
+  await expect(page.locator('.user-text').last()).toHaveText('先检查这个截图');
+  let sent = await setup.codex.request<{ expectedTurnId: string; input: { type: string }[] }>(
+    'test.lastSteer',
+  );
+  expect(sent.expectedTurnId).toBe(turn.id);
+  expect(sent.input.map((part) => part.type)).toEqual(['text', 'localImage']);
+  await expect(page.getByRole('button', { name: '停止任务', exact: true })).toBeVisible();
+  const originalHandle = setup.handle.bind(setup);
+  setup.handle = async (method, params) => {
+    if (method === 'turn.steer') await new Promise((resolve) => setTimeout(resolve, 300));
+    return originalHandle(method, params);
+  };
+  await composer.fill('再补充一句');
+  await composer.press('Shift+Enter');
+  await expect(composer).toHaveValue('再补充一句\n');
+  await composer.press('Enter');
+  await composer.fill('确认前继续输入的新草稿');
+  await expect(page.locator('.user-text').last()).toHaveText('再补充一句');
+  await expect(steer).toBeEnabled();
+  await expect(composer).toHaveValue('确认前继续输入的新草稿');
+  expect(((await setup.handle('thread.read', { threadId })) as Thread).turns).toHaveLength(2);
+  await page.screenshot({ path: 'test-results/steer-zh.png', animations: 'disabled' });
+  const handle = setup.handle.bind(setup);
+  setup.handle = async (method, params) => {
+    if (method === 'turn.steer') {
+      await setup.codex.request('turn/interrupt', { threadId, turnId: turn.id });
+    }
+    return handle(method, params);
+  };
+  await composer.fill('这句必须保留');
+  await pasteFixture(page);
+  await steer.click();
+  await expect(page.getByRole('alert')).toContainText('插话未发送，输入已保留');
+  await expect(composer).toHaveValue('这句必须保留');
+  await expect(page.locator('.image-attachments img')).toHaveCount(1);
+  expect(((await setup.handle('thread.read', { threadId })) as Thread).turns).toHaveLength(2);
 });
 
 test('create thread, make an explicit approval decision, interrupt a running turn', async ({ page }) => {

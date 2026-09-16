@@ -17,6 +17,7 @@ import { isWriterConflict } from '../shared/errors';
 import { APP_VERSION } from '../shared/version';
 import { CompletionTracker, type CompletionNotice } from '../shared/completion';
 import { threadPermissions } from '../shared/permissions';
+import { DEFAULT_FONT_SIZE } from '../shared/appearance';
 
 export async function request<T = unknown>(method: string, params?: JsonObject): Promise<T> {
   if (!window.codexDesk) throw new Error('Open Codex Desk using the desktop application.');
@@ -30,6 +31,7 @@ const empty: Bootstrap = {
     defaultWorkspace: '',
     locale: 'zh',
     theme: 'dark',
+    fontSize: DEFAULT_FONT_SIZE,
     lastProjectId: '',
     lastThreadId: '',
   },
@@ -76,6 +78,8 @@ export function useDesk() {
   const listGeneration = useRef(0);
   const selectionGeneration = useRef(0);
   const sendingRef = useRef(false);
+  const settingsWrites = useRef<Promise<unknown>>(Promise.resolve());
+  const settingsRevision = useRef(0);
   const fail = useCallback((e: unknown) => setError(e instanceof Error ? e.message : String(e)), []);
   const prepareTerminal = useCallback((thread: Thread) => {
     if (thread.syncState === 'external') {
@@ -462,9 +466,47 @@ export function useDesk() {
     }
   }
   async function updateSettings(patch: Partial<Settings>) {
-    const settings = await request<Settings>('settings.update', patch);
-    const { defaultWorkspace } = await request<Bootstrap>('bootstrap');
-    setBoot((old) => ({ ...old, settings, defaultWorkspace }));
+    const revision = ++settingsRevision.current;
+    // Preview immediately, but serialize saves so a dragged slider cannot restore an older value.
+    setBoot((old) => ({ ...old, settings: { ...old.settings, ...patch } }));
+    const operation = settingsWrites.current
+      .catch(() => {})
+      .then(async () => {
+        try {
+          await request<Settings>('settings.update', patch);
+        } finally {
+          if (revision === settingsRevision.current) {
+            const { settings, defaultWorkspace } = await request<Bootstrap>('bootstrap');
+            if (revision === settingsRevision.current)
+              setBoot((old) => ({ ...old, settings, defaultWorkspace }));
+          }
+        }
+      });
+    settingsWrites.current = operation;
+    await operation;
+  }
+  async function steer(expectedTurnId: string, text: string, images: string[]) {
+    if (sendingRef.current || !threadId) return false;
+    sendingRef.current = true;
+    setSending(true);
+    setError('');
+    try {
+      await request('turn.steer', { threadId, expectedTurnId, text, images });
+      return true;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      fail(
+        new Error(
+          (boot.settings.locale === 'zh'
+            ? '插话未发送，输入已保留。'
+            : 'Steer was not sent. Your draft is kept. ') + reason,
+        ),
+      );
+      return false;
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
+    }
   }
   async function reconnect() {
     setError('');
@@ -550,6 +592,7 @@ export function useDesk() {
     addProject,
     removeProject,
     send,
+    steer,
     ensureThread,
     setGoal,
     clearGoal,

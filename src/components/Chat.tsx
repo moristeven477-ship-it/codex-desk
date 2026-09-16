@@ -42,22 +42,32 @@ export function Markdown({ text }: { text: string }) {
     </ReactMarkdown>
   );
 }
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, onError }: { text: string; onError: (error: unknown) => void }) {
   const t = useT(),
     [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
   return (
     <button
-      className="icon-button copy-button"
-      title={t('复制', 'Copy')}
-      aria-label={t('复制', 'Copy')}
+      className="copy-button"
+      title={t('复制这条消息', 'Copy this message')}
+      aria-label={copied ? t('已复制', 'Copied') : t('复制消息', 'Copy message')}
       onClick={() => {
-        void navigator.clipboard.writeText(text).then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        });
+        if (!window.codexDesk) return;
+        void window.codexDesk
+          .copyText(text)
+          .then(() => {
+            clearTimeout(timer.current);
+            setCopied(true);
+            timer.current = setTimeout(() => setCopied(false), 1500);
+          })
+          .catch(() =>
+            onError(new Error(t('复制失败，请重试。', 'Could not copy this message. Please try again.'))),
+          );
       }}
     >
       {copied ? <Check size={14} /> : <Copy size={14} />}
+      <span>{copied ? t('已复制', 'Copied') : t('复制', 'Copy')}</span>
     </button>
   );
 }
@@ -123,10 +133,15 @@ function Activity({ item }: { item: Item }) {
     </details>
   );
 }
-export function MessageItem({ item }: { item: Item }) {
+export function MessageItem({ item, onError }: { item: Item; onError: (error: unknown) => void }) {
   const t = useT();
   if (item.type === 'userMessage') {
     const inputs = item.content as { type: string; text?: string; path?: string; url?: string }[];
+    const text =
+      inputs
+        ?.filter((input) => input.type === 'text')
+        .map((input) => input.text || '')
+        .join('\n\n') || '';
     return (
       <article className="message user-message">
         <div className="user-bubble">
@@ -143,6 +158,11 @@ export function MessageItem({ item }: { item: Item }) {
             ),
           )}
         </div>
+        {!!text && (
+          <div className="message-actions">
+            <CopyButton text={text} onError={onError} />
+          </div>
+        )}
       </article>
     );
   }
@@ -160,7 +180,9 @@ export function MessageItem({ item }: { item: Item }) {
         <div className="markdown">
           <Markdown text={item.text} />
         </div>
-        <CopyButton text={item.text} />
+        <div className="message-actions">
+          <CopyButton text={item.text} onError={onError} />
+        </div>
       </article>
     );
   }
@@ -235,7 +257,7 @@ export function Chat({
             thread?.turns.map((turn) => (
               <section key={turn.id} className="turn">
                 {turn.items.map((item) => (
-                  <MessageItem key={item.id} item={item} />
+                  <MessageItem key={item.id} item={item} onError={onError} />
                 ))}
                 {turn.status === 'failed' && (
                   <div className="turn-error">
