@@ -71,11 +71,11 @@ try {
     throw new Error('Unsafe renderer preferences');
   const composer = page.getByRole('textbox', { name: 'Message Codex' });
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('slider', { name: 'Font size', exact: true }).press('End');
-  await expect(composer).toHaveCSS('font-size', '22px');
+  await page.getByRole('slider', { name: 'Font size', exact: true }).fill('17.35');
+  await expect(composer).toHaveCSS('font-size', '17.35px');
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.reload();
-  await expect(composer).toHaveCSS('font-size', '22px');
+  await expect(composer).toHaveCSS('font-size', '17.35px');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Reset', exact: true }).click();
   await page.getByRole('button', { name: 'Close', exact: true }).click();

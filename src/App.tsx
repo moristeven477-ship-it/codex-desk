@@ -43,7 +43,7 @@ import { StatusPanel } from './components/StatusPanel';
 import { CliTerminal } from './components/CliTerminal';
 import { CompletionToast } from './components/CompletionToast';
 import { StartupModePicker } from './components/StartupModePicker';
-import { DEFAULT_FONT_SIZE } from './shared/appearance';
+import { applyFontSize } from './lib/appearance';
 
 export function App() {
   const desk = useDesk();
@@ -52,7 +52,7 @@ export function App() {
     document.documentElement.lang = desk.boot.settings.locale === 'zh' ? 'zh-CN' : 'en';
   }, [desk.boot.settings.theme, desk.boot.settings.locale]);
   useEffect(() => {
-    document.documentElement.style.fontSize = `${(16 * desk.boot.settings.fontSize) / DEFAULT_FONT_SIZE}px`;
+    applyFontSize(desk.boot.settings.fontSize);
   }, [desk.boot.settings.fontSize]);
   return (
     <LocaleContext value={desk.boot.settings.locale}>

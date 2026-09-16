@@ -15,17 +15,17 @@ test('independent preference edits and thread selection preserve language and CL
       lastProjectId: 'project',
     });
     await service.handle('settings.update', { theme: 'light' });
-    await service.handle('settings.update', { fontSize: 18 });
+    await service.handle('settings.update', { fontSize: 18.37 });
     await assert.rejects(service.handle('settings.update', { fontSize: 0 }));
     await assert.rejects(service.handle('settings.update', { fontSize: 99 }));
-    await assert.rejects(service.handle('settings.update', { fontSize: 13.5 }));
+    await assert.rejects(service.handle('settings.update', { fontSize: Number.NaN }));
     await service.handle('settings.update', { lastThreadId: 'thread' });
     const reloaded = new DeskService(root);
     await reloaded.init();
     assert.deepEqual(reloaded.store.state.settings, {
       locale: 'en',
       theme: 'light',
-      fontSize: 18,
+      fontSize: 18.37,
       binaryPath: '/custom/bin/codex',
       codexHome: '',
       defaultWorkspace: '',

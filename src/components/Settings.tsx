@@ -10,13 +10,12 @@ import {
   Sun,
   Moon,
   LogIn,
-  Type,
 } from 'lucide-react';
 import type { Bootstrap, Settings as Preferences } from '../shared/types';
 import { Dialog } from './Dialog';
 import { useT } from '../lib/i18n';
 import { request } from '../lib/useDesk';
-import { DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE } from '../shared/appearance';
+import { FontSizeControl } from './FontSizeControl';
 
 export function Settings({
   boot,
@@ -122,48 +121,11 @@ export function Settings({
                   </button>
                 </div>
               </div>
-              <section className="font-size-setting" aria-labelledby="font-size-label">
-                <div className="font-size-heading">
-                  <label id="font-size-label" htmlFor="font-size">
-                    <Type size={17} />
-                    {t('字体大小', 'Font size')}
-                  </label>
-                  <output htmlFor="font-size">{boot.settings.fontSize} px</output>
-                  <button
-                    className="text-button"
-                    disabled={boot.settings.fontSize === DEFAULT_FONT_SIZE}
-                    onClick={() => void onSave({ fontSize: DEFAULT_FONT_SIZE }).catch(onError)}
-                  >
-                    {t('恢复默认', 'Reset')}
-                  </button>
-                </div>
-                <div className="font-size-slider">
-                  <span aria-hidden="true">A</span>
-                  <input
-                    id="font-size"
-                    type="range"
-                    min={MIN_FONT_SIZE}
-                    max={MAX_FONT_SIZE}
-                    step={1}
-                    value={boot.settings.fontSize}
-                    aria-valuetext={`${boot.settings.fontSize} px`}
-                    aria-describedby="font-size-help"
-                    onChange={(event) => void onSave({ fontSize: Number(event.target.value) }).catch(onError)}
-                  />
-                  <span aria-hidden="true">A</span>
-                </div>
-                <p id="font-size-help">
-                  {t(
-                    '消息、输入框和界面文字立即调整，自动保存。',
-                    'Resize messages, the composer and interface text. Changes save automatically.',
-                  )}
-                </p>
-                <div className="font-size-preview">
-                  {t('让文字更清晰，让阅读更轻松。', 'A comfortable size for your next idea.')}
-                  <br />
-                  <code>Codex Desk · Aa 0123</code>
-                </div>
-              </section>
+              <FontSizeControl
+                fontSize={boot.settings.fontSize}
+                onSave={(fontSize) => onSave({ fontSize })}
+                onError={onError}
+              />
               <div className="about-card">
                 <img src="./icon.svg" alt="" />
                 <div>

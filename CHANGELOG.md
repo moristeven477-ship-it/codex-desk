@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.4
+
+- Make font sizing continuous with 0.01 px pointer precision and a short visual transition. Respect reduced-motion preferences.
+- Preview locally once per animation frame instead of rerendering the conversation and saving every drag step. Save when the gesture ends, focus leaves, or Settings closes.
+- Keep keyboard adjustment available: 0.1 px with arrows, 1 px with Shift + Arrow or Page Up/Down; Home/End reach the limits. Persist fractional sizes across restarts.
+
 ## 0.2.3
 
 - Add a live font-size slider under Settings → General (12–22 px), with a preview, reset and automatic persistence. Scale conversation text, composer, interface and embedded CLI text while keeping native Ubuntu Terminal preferences intact.

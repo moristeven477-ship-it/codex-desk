@@ -1,5 +1,14 @@
 @import url('./theme.css');
 
+:root {
+  transition: font-size 80ms linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    transition: none;
+  }
+}
+
 .composer-area {
   position: relative;
 }
@@ -2641,6 +2650,8 @@ select option {
 }
 .font-size-heading output {
   font-variant-numeric: tabular-nums;
+  min-width: 5.5ch;
+  text-align: right;
 }
 .font-size-slider {
   margin-top: 16px;

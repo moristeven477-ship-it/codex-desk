@@ -57,7 +57,7 @@ Goals use `thread/goal/get`, `set`, and `clear`, and their corresponding notific
 
 Steering calls the official [`turn/steer`](https://learn.chatgpt.com/docs/app-server#steer-an-active-turn) method with the captured active `expectedTurnId`. The service accepts only text and authorized images, forwards no model/permission overrides, and never retries a rejected steer as a new turn. CLI notifications remain authoritative for message history. Accepted submissions clear only the submitted draft/attachments; later typing stays intact.
 
-Message copying uses a narrow, trusted-sender-validated clipboard-write IPC method. It writes the original text/Markdown, not the conversation or rendered HTML, without requesting renderer clipboard-read access. Font size is a bounded local preference: rem-based text scales from the 13 px default, and embedded xterm sizing updates without restarting its PTY. Preference writes are serialized and preview immediately; native terminal profiles and Codex settings are unaffected.
+Message copying uses a narrow, trusted-sender-validated clipboard-write IPC method. It writes the original text/Markdown, not the conversation or rendered HTML, without requesting renderer clipboard-read access. Font size is a bounded local preference: rem-based text scales from the 13 px default, and embedded xterm sizing updates without restarting its PTY. Font drags preview locally once per animation frame with fractional sizes and an 80 ms CSS transition (disabled for reduced motion). Pointer release, keyboard release, blur or closing Settings saves the current value, keeping disk writes and full conversation renders out of the drag path. Preference writes remain serialized; native terminal profiles and Codex settings are unaffected.
 
 ## Build
 

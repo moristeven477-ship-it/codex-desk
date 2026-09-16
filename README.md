@@ -20,7 +20,7 @@ _Screenshots show a synthetic test workspace. The application uses your real loc
 - Stream replies, command output, reasoning summaries, plans, and file changes.
 - Run conversations independently. While a task runs, press **Enter** or click **Steer** to add text/images to that same turn; **Stop** remains separate.
 - Copy your messages and Codex replies with the visible **Copy** action below each text message.
-- Adjust **Settings → General → Font size** from 12–22 px, with live preview, automatic saving and reset.
+- Adjust **Settings → General → Font size** continuously from 12–22 px, with smooth live preview, saving on release and reset. Arrow keys adjust by 0.1 px; Shift + Arrow adjusts by 1 px.
 - Respond to command/file approvals, permission requests, and Codex questions. Pending requests remain accessible across conversations.
 - Choose a model, reasoning effort, and permission mode. Model choices come from your installed Codex.
 - Paste screenshots and copied images with **Ctrl+V**, or use the native image picker. Preview/remove attachments before sending (8 images per message, 20 MiB each).
@@ -54,7 +54,7 @@ If Codex already works in your terminal, keep that installation. Codex Desk disc
 Download the `.deb` from [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest), then run:
 
 ```bash
-sudo apt install ./codex-desk-0.2.3-amd64.deb
+sudo apt install ./codex-desk-0.2.4-amd64.deb
 ```
 
 Launch **Codex Desk** from Ubuntu's application menu, or run `codex-desk`.
@@ -64,14 +64,14 @@ The package includes the Electron runtime; Node.js is needed separately only for
 ### Portable AppImage
 
 ```bash
-chmod +x codex-desk-0.2.3-x86_64.AppImage
-./codex-desk-0.2.3-x86_64.AppImage
+chmod +x codex-desk-0.2.4-x86_64.AppImage
+./codex-desk-0.2.4-x86_64.AppImage
 ```
 
 If FUSE is unavailable, run without mounting the AppImage:
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.3-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.4-x86_64.AppImage
 ```
 
 The `.deb` is recommended on Ubuntu 24.04: its installer includes Electron's Ubuntu AppArmor integration. Do not disable Chromium's sandbox to work around an installation problem. See [Troubleshooting](docs/TROUBLESHOOTING.md).

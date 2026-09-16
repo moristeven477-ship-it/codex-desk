@@ -10,7 +10,7 @@ export const settingsSchema = z.object({
   defaultWorkspace: z.string().max(4096).default(''),
   locale: z.enum(['zh', 'en']).default('zh'),
   theme: z.enum(['dark', 'light']).default('dark'),
-  fontSize: z.number().int().min(MIN_FONT_SIZE).max(MAX_FONT_SIZE).default(DEFAULT_FONT_SIZE),
+  fontSize: z.number().min(MIN_FONT_SIZE).max(MAX_FONT_SIZE).default(DEFAULT_FONT_SIZE),
   lastProjectId: z.string().default(''),
   lastThreadId: z.string().default(''),
 });

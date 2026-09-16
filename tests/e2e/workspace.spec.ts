@@ -153,6 +153,32 @@ test('font slider previews, persists, resets and stays usable in English at the 
   await page.getByRole('button', { name: '设置', exact: true }).click();
   const slider = page.getByRole('slider', { name: '字体大小', exact: true });
   await expect(slider).toHaveValue('13');
+  await slider.press('Home');
+  await expect.poll(() => setup.store.state.settings.fontSize).toBe(12);
+  const originalHandle = setup.handle.bind(setup);
+  let fontWrites = 0;
+  setup.handle = async (method, params) => {
+    if (method === 'settings.update' && params && typeof params === 'object' && 'fontSize' in params)
+      fontWrites++;
+    return originalHandle(method, params);
+  };
+  const track = (await slider.boundingBox())!;
+  await page.mouse.move(track.x + 8, track.y + track.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(track.x + track.width * 0.437, track.y + track.height / 2, { steps: 30 });
+  const dragged = Number(await slider.inputValue());
+  expect(dragged).toBeGreaterThan(15);
+  expect(dragged).toBeLessThan(18);
+  expect(Number.isInteger(dragged)).toBe(false);
+  await expect
+    .poll(() =>
+      page.locator('.markdown').evaluate((element) => parseFloat(getComputedStyle(element).fontSize)),
+    )
+    .toBeCloseTo(dragged, 2);
+  expect(fontWrites).toBe(0);
+  await page.mouse.up();
+  await expect.poll(() => setup.store.state.settings.fontSize).toBe(dragged);
+  expect(fontWrites).toBe(1);
   await slider.press('End');
   await expect(page.locator('.markdown')).toHaveCSS('font-size', '22px');
   await expect(page.locator('.composer textarea')).toHaveCSS('font-size', '22px');
@@ -160,11 +186,11 @@ test('font slider previews, persists, resets and stays usable in English at the 
   await slider.press('ArrowLeft');
   await slider.press('ArrowLeft');
   await slider.press('ArrowLeft');
-  await expect.poll(() => setup.store.state.settings.fontSize).toBe(19);
+  await expect.poll(() => setup.store.state.settings.fontSize).toBe(21.7);
   await page.reload();
-  await expect(page.locator('.markdown')).toHaveCSS('font-size', '19px');
+  await expect(page.locator('.markdown')).toHaveCSS('font-size', '21.7px');
   await page.getByRole('button', { name: '设置', exact: true }).click();
-  await expect(slider).toHaveValue('19');
+  await expect(slider).toHaveValue('21.7');
   await page.getByRole('combobox', { name: '界面语言' }).selectOption('en');
   await page.setViewportSize({ width: 880, height: 680 });
   const englishSlider = page.getByRole('slider', { name: 'Font size', exact: true });
@@ -179,6 +205,12 @@ test('font slider previews, persists, resets and stays usable in English at the 
   await page.getByRole('button', { name: 'Reset', exact: true }).click();
   await expect(englishSlider).toHaveValue('13');
   await expect(page.locator('.markdown')).toHaveCSS('font-size', '13px');
+  await englishSlider.fill('16.37');
+  await page.keyboard.press('Escape');
+  await expect.poll(() => setup.store.state.settings.fontSize).toBe(16.37);
+  await expect(page.locator('.markdown')).toHaveCSS('font-size', '16.37px');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(page.locator('html')).toHaveCSS('transition-property', 'none');
 });
 
 test('user and assistant messages copy their exact text, with success and retry feedback', async ({

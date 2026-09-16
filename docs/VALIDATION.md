@@ -1,45 +1,33 @@
-# Release validation — 0.2.3
+# Release validation — 0.2.4
 
-Validated on Ubuntu 24.04.4 x86-64 (X11), GNOME Terminal 3.52, Node.js 22.23.2, Electron 44.3.0, and Codex CLI 0.154.0 on 2026-09-15.
+Validated on Ubuntu 24.04.4 x86-64 (X11), Node.js 22.23.2 and Electron 44.3.0 on 2026-09-15.
 
-| Check                                      | Result / coverage                                                                                                                                                                                                                                                                            |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Formatting / TypeScript / production build | Passed; renderer, main/preload and native terminal helpers packaged                                                                                                                                                                                                                          |
-| Unit / protocol integration                | 17 tests passed: active-turn steering between two clients, expected-turn rejection, image authorization, CLI settings inheritance, existing synchronization/permissions/PTY/notification/workspace behavior                                                                                  |
-| Browser workflows                          | 18 tests passed: live font sizing, rapid changes, persistence/reset, English at 880 px width; exact user/assistant text copying and failure feedback; repeated text/image steering, later typing preserved, rejected steer retains text/images; existing workflows                           |
-| Packaged AppImage                          | Passed in isolated Xvfb + D-Bus + Openbox: font preview/reload/reset, native clipboard contents after both Copy buttons, running-turn steering through actual Electron IPC; existing paste, YOLO, goals, embedded CLI, notifications and terminal reuse/survival checks                      |
-| Installed Codex CLI                        | Separate home, Unix app-server, workspace and loopback Responses fixture; a CLI-started turn accepted one Desk steer and one CLI steer, reached the provider with both additions, and completed as exactly one turn with three user messages; YOLO preserved; stale/completed turns rejected |
-| Ubuntu artifacts                           | `.deb` version/architecture/dependencies inspected; AppImage executed; both artifacts have SHA-256 checksums                                                                                                                                                                                 |
-| Isolation                                  | Renderer sandbox/context isolation enabled; tests use no `--no-sandbox`, do not access real account credentials and do not alter running user work                                                                                                                                           |
+| Check                                       | Result / coverage                                                                                                                                                                                                                                         |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Formatting, TypeScript and production build | Passed                                                                                                                                                                                                                                                    |
+| Unit / protocol integration                 | 17 tests passed, including fractional preference persistence and invalid bounds/NaN rejection                                                                                                                                                             |
+| Browser workflows                           | 18 tests passed; pointer drag previews a fractional size without preference writes, release saves once, keyboard edits survive reload, closing Settings saves pending changes, reset and English layout work, reduced-motion disables the font transition |
+| Packaged AppImage                           | Passed on an isolated display: 17.35 px preview, persistence after closing/reloading and reset; existing native clipboard, images, steering, YOLO, terminal, goals and notification workflows                                                             |
+| Ubuntu artifacts                            | `.deb` metadata inspected, AppImage executed, SHA-256 checksums produced                                                                                                                                                                                  |
 
 ## Reproduce
 
 ```bash
-sudo apt install build-essential gnome-terminal python3-gi gir1.2-gtk-3.0 openbox xvfb dbus-x11 x11-utils xauth libxtst6
 npm ci
 npm run format:check
 npm run typecheck
 npm test
-npx playwright install chromium
 npm run test:e2e
-npm run test:steer
 npm run package:linux
-npm run test:terminal
 APPIMAGE_EXTRACT_AND_RUN=1 DESK_TEST_CLIPBOARD=1 \
-  DESK_EXECUTABLE="$PWD/release/codex-desk-0.2.3-x86_64.AppImage" \
+  DESK_EXECUTABLE="$PWD/release/codex-desk-0.2.4-x86_64.AppImage" \
   npm run test:native
 ```
 
-`test:steer` uses the installed `codex` (or an absolute `DESK_LIVE_BINARY` path). It runs the unmodified CLI against a synthetic HTTP Responses provider bound to loopback. This validates the real CLI's steering protocol, turn lifecycle and model-request input, not a remote model's answer quality or response latency. It needs no API key and makes no external model request. Its app-server and Codex home are temporary and independent of the user's shared server.
+Native smoke checks require `gnome-terminal python3-gi gir1.2-gtk-3.0 openbox xvfb dbus-x11 x11-utils xauth libxtst6`. They use a private Xvfb display, D-Bus session and temporary app data. Only test-owned CLI processes are cleaned up; the user's shared server and workspaces are untouched.
 
-Native tests use private displays and D-Bus sessions with no desktop-service activation directories. Notifications are captured inside the test Electron process, and clipboard contents are confined to the test display. Only test-owned CLI processes are cleaned up. Public screenshots use synthetic data.
+## Behavior and limits
 
-## Limits
+The slider uses 0.01 px precision over the existing 12–22 px range. The renderer previews at most once per animation frame, with an 80 ms font transition. Pointer release, blur and closing Settings commit pending changes; keyboard controls and assistive input also save automatically. Reduced-motion preference disables the transition. Native Ubuntu Terminal retains its own font profile.
 
-Font size scales Desk text and its embedded CLI. Native Ubuntu Terminal uses the user's own profile. Text-message Copy actions copy original text/Markdown; image attachments are not copied as image clipboard content.
-
-Steering targets one active turn and preserves its CLI settings. An accepted steer is processed by Codex during that task; no new turn is created as a fallback. If the server rejects it, the draft/attachments remain available. Slash commands retain their own command semantics.
-
-Background window behavior is validated on Ubuntu 24.04 X11; Wayland and other desktops are not separately validated. Native integration needs GNOME Terminal 3.x and Python GObject bindings, installed separately for AppImage. The `.deb` was inspected rather than installed as root. A standalone CLI owns its writer until it exits; Desk waits and preserves history. Unsent image selections are not restored after an application restart.
-
-[Previous release validation](VALIDATION-0.2.2.md).
+This update changes local appearance preferences only. CLI synchronization, permission precedence and steering are covered by the unchanged protocol tests and packaged smoke workflows. The installed-CLI steering validation from 0.2.3 is recorded in the [previous release validation](VALIDATION-0.2.3.md).

@@ -27,7 +27,7 @@ _截图使用测试项目，应用实际连接本机 Codex CLI。_
 - CLI 与 Desk 共用同一会话，实时同步消息、审批、设置和目标。
 - 任务运行时按 **Enter** 或点击 **插话**，向同一轮任务补充文字和图片；停止按钮独立保留。插话被拒绝时保留输入与附件，继续使用 CLI 当前设置。`/` 命令仍按命令处理。
 - 你的文字消息、Codex 回复和计划下方均有 **复制** 按钮，复制原始文字/Markdown，并显示结果。
-- 在 **设置 → 通用 → 字体大小** 拖动滑块（12–22 px），实时预览、自动保存，也可恢复默认。
+- 在 **设置 → 通用 → 字体大小** 连续拖动滑块（12–22 px），平滑预览、松手自动保存，也可恢复默认。方向键微调 0.1 px，Shift + 方向键调节 1 px。
 - 创建或点开会话时，自动在 Ubuntu 终端中准备对应的后台标签页；重复打开会复用同一个 CLI 进程。
 - 完整 `/` 命令菜单、内置真实 CLI、右上角目标面板。
 - 带说明与选中状态的模型弹窗，以及渐变赛博朋克樱花 SVG 图标。
@@ -52,7 +52,7 @@ codex login
 从 [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest) 下载 `.deb`：
 
 ```bash
-sudo apt install ./codex-desk-0.2.3-amd64.deb
+sudo apt install ./codex-desk-0.2.4-amd64.deb
 ```
 
 安装后在 Ubuntu 应用菜单中打开 **Codex Desk**，或运行 `codex-desk`。
@@ -60,14 +60,14 @@ sudo apt install ./codex-desk-0.2.3-amd64.deb
 也可下载便携 AppImage：
 
 ```bash
-chmod +x codex-desk-0.2.3-x86_64.AppImage
-./codex-desk-0.2.3-x86_64.AppImage
+chmod +x codex-desk-0.2.4-x86_64.AppImage
+./codex-desk-0.2.4-x86_64.AppImage
 ```
 
 没有 FUSE 时：
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.3-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.4-x86_64.AppImage
 ```
 
 Ubuntu 24.04 优先使用 `.deb`，安装器包含 Electron 的 AppArmor 集成。遇到沙箱错误时参考[故障排查](docs/TROUBLESHOOTING.md)，不要通过关闭沙箱解决。
