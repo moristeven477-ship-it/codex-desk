@@ -52,6 +52,40 @@ async function fixture() {
   };
 }
 
+test('compaction shares lifecycle, preserves CLI settings and rejects a turn started before Desk connects', async () => {
+  const f = await fixture();
+  try {
+    const thread = (await f.desk.handle('thread.create', { access: 'danger-full-access' })) as Thread;
+    await f.cli.request('thread/resume', { threadId: thread.id });
+    const settings = await f.cli.request('test.settings', { threadId: thread.id });
+    const completed = eventWhere(f.cli, (e) => e.method === 'turn/completed');
+    await f.desk.handle('thread.compact', { threadId: thread.id });
+    assert.equal(((await completed).params!.turn as { status: string }).status, 'completed');
+    assert.deepEqual(await f.cli.request('test.settings', { threadId: thread.id }), settings);
+    await f.cli.request('test.compaction', { mode: 'filtered', item: false });
+    const failed = eventWhere(f.desk, (e) => e.method === 'turn/completed');
+    await f.cli.request('thread/compact/start', { threadId: thread.id });
+    assert.equal(((await failed).params!.turn as { status: string }).status, 'failed');
+    const history = (await f.desk.handle('thread.read', { threadId: thread.id })) as Thread;
+    assert.match(history.turns.at(-1)!.error!.message, /content_filter/);
+    assert.equal(history.turns.at(-1)!.items.length, 0);
+    await f.desk.codex.stop();
+    const { turn } = await f.cli.request<{ turn: { id: string } }>('turn/start', {
+      threadId: thread.id,
+      input: [{ type: 'text', text: 'wait for CLI task' }],
+    });
+    await f.desk.connect();
+    assert.equal(f.desk.runningCount, 0);
+    await assert.rejects(
+      f.desk.handle('thread.compact', { threadId: thread.id }),
+      /Wait for the running turn/,
+    );
+    await f.cli.request('turn/interrupt', { threadId: thread.id, turnId: turn.id });
+  } finally {
+    await f.close();
+  }
+});
+
 test('two Unix WebSocket clients share turns, goals and approvals; closing Desk leaves CLI usable', async () => {
   const f = await fixture();
   try {

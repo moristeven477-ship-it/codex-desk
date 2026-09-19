@@ -235,7 +235,8 @@ export function useDesk() {
         void refresh();
       if (event.method === 'error') {
         const err = p.error as { message?: string } | undefined;
-        if (!p.willRetry) setError(err?.message ?? 'Codex reported an error.');
+        if (!p.willRetry && (!id || id === current.current.threadId))
+          setError(err?.message ?? 'Codex reported an error.');
       }
       if (event.method === 'account/login/completed') {
         if (p.success === false) setError(String(p.error ?? 'Login failed.'));

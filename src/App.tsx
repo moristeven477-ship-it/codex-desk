@@ -165,6 +165,15 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
       return true;
     }
     if (name === 'compact' && threadId && !args) {
+      if (thread?.syncState === 'external') {
+        setSyncDialog(true);
+        return false;
+      }
+      if (running || desk.loading)
+        throw new Error(
+          t('等待当前任务结束后再压缩上下文。', 'Wait for the current task before compacting context.'),
+        );
+      desk.setError('');
       await request('thread.compact', { threadId });
       return true;
     }
@@ -660,6 +669,11 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
               running={running}
               onOlder={desk.older}
               onError={desk.fail}
+              onCompact={() => runCommand('compact', '')}
+              onNew={desk.newThread}
+              canCompact={
+                ready && !running && !desk.loading && !desk.archived && thread?.syncState !== 'external'
+              }
             />
           ) : (
             <div className="welcome">

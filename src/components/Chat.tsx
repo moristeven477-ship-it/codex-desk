@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import type { Item, Thread } from '../shared/types';
 import { useT } from '../lib/i18n';
+import { compactionFailure } from '../shared/errors';
+import { CompactionError } from './CompactionError';
 
 export function Markdown({ text }: { text: string }) {
   return (
@@ -78,6 +80,22 @@ function Activity({ item }: { item: Item }) {
     ['failed', 'declined'].includes(item.status ?? '') ||
     (typeof item.exitCode === 'number' && item.exitCode !== 0);
   const reasoning = item.type === 'reasoning';
+  if (item.type === 'contextCompaction') {
+    const label = running
+      ? t('正在压缩上下文…', 'Compacting context…')
+      : failed
+        ? t('上下文压缩失败', 'Context compaction failed')
+        : item.status === 'interrupted'
+          ? t('上下文压缩已停止', 'Context compaction stopped')
+          : t('上下文已压缩', 'Context compacted');
+    return (
+      <div className={`compaction-status ${failed ? 'failed' : ''}`} role="status">
+        {running ? <Loader2 size={14} className="spin" /> : <Workflow size={14} />}
+        <span>{label}</span>
+        {item.status === 'completed' && <CheckCheck size={13} className="success" />}
+      </div>
+    );
+  }
   const icon =
     item.type === 'commandExecution' ? (
       <Terminal size={14} />
@@ -194,12 +212,18 @@ export function Chat({
   running,
   onOlder,
   onError,
+  onCompact,
+  onNew,
+  canCompact,
 }: {
   thread?: Thread;
   loading: boolean;
   running: boolean;
   onOlder: () => Promise<void>;
   onError: (e: unknown) => void;
+  onCompact: () => Promise<boolean>;
+  onNew: () => void;
+  canCompact: boolean;
 }) {
   const t = useT(),
     scrollRef = useRef<HTMLDivElement>(null),
@@ -254,21 +278,44 @@ export function Chat({
               <span>{t('读取会话…', 'Loading conversation…')}</span>
             </div>
           ) : (
-            thread?.turns.map((turn) => (
-              <section key={turn.id} className="turn">
-                {turn.items.map((item) => (
-                  <MessageItem key={item.id} item={item} onError={onError} />
-                ))}
-                {turn.status === 'failed' && (
-                  <div className="turn-error">
-                    {turn.error?.message || t('任务执行失败', 'This turn failed.')}
-                  </div>
-                )}
-                {turn.status === 'interrupted' && (
-                  <div className="turn-note">{t('任务已停止', 'Turn stopped')}</div>
-                )}
-              </section>
-            ))
+            thread?.turns.map((turn, index) => {
+              const message = turn.error?.message || t('任务执行失败', 'This turn failed.');
+              const failure = compactionFailure(
+                message,
+                turn.items.some((item) => item.type === 'contextCompaction' && item.status === 'failed') ||
+                  (turn.items.length > 0 && turn.items.every((item) => item.type === 'contextCompaction')),
+              );
+              return (
+                <section key={turn.id} className="turn">
+                  {turn.items.map((item) => (
+                    <MessageItem
+                      key={item.id}
+                      item={
+                        item.type === 'contextCompaction' && !item.status
+                          ? { ...item, status: turn.status }
+                          : item
+                      }
+                      onError={onError}
+                    />
+                  ))}
+                  {turn.status === 'failed' &&
+                    (failure ? (
+                      <CompactionError
+                        message={message}
+                        filtered={failure === 'filtered'}
+                        onRetry={canCompact && index === thread.turns.length - 1 ? onCompact : undefined}
+                        onNew={onNew}
+                        onError={onError}
+                      />
+                    ) : (
+                      <div className="turn-error">{message}</div>
+                    ))}
+                  {turn.status === 'interrupted' && (
+                    <div className="turn-note">{t('任务已停止', 'Turn stopped')}</div>
+                  )}
+                </section>
+              );
+            })
           )}
           {!loading && thread && !thread.turns.length && (
             <div className="empty-conversation">

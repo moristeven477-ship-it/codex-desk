@@ -52,7 +52,7 @@ codex login
 从 [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest) 下载 `.deb`：
 
 ```bash
-sudo apt install ./codex-desk-0.2.4-amd64.deb
+sudo apt install ./codex-desk-0.2.5-amd64.deb
 ```
 
 安装后在 Ubuntu 应用菜单中打开 **Codex Desk**，或运行 `codex-desk`。
@@ -60,14 +60,14 @@ sudo apt install ./codex-desk-0.2.4-amd64.deb
 也可下载便携 AppImage：
 
 ```bash
-chmod +x codex-desk-0.2.4-x86_64.AppImage
-./codex-desk-0.2.4-x86_64.AppImage
+chmod +x codex-desk-0.2.5-x86_64.AppImage
+./codex-desk-0.2.5-x86_64.AppImage
 ```
 
 没有 FUSE 时：
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.4-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.5-x86_64.AppImage
 ```
 
 Ubuntu 24.04 优先使用 `.deb`，安装器包含 Electron 的 AppArmor 集成。遇到沙箱错误时参考[故障排查](docs/TROUBLESHOOTING.md)，不要通过关闭沙箱解决。

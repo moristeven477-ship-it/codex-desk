@@ -1,14 +1,15 @@
-# Release validation — 0.2.4
+# Release validation — 0.2.5
 
-Validated on Ubuntu 24.04.4 x86-64 (X11), Node.js 22.23.2 and Electron 44.3.0 on 2026-09-15.
+Validated on Ubuntu 24.04.4 x86-64 (X11), Node.js 22.23.2 and Electron 44.3.0 on 2026-09-19.
 
-| Check                                       | Result / coverage                                                                                                                                                                                                                                         |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Formatting, TypeScript and production build | Passed                                                                                                                                                                                                                                                    |
-| Unit / protocol integration                 | 17 tests passed, including fractional preference persistence and invalid bounds/NaN rejection                                                                                                                                                             |
-| Browser workflows                           | 18 tests passed; pointer drag previews a fractional size without preference writes, release saves once, keyboard edits survive reload, closing Settings saves pending changes, reset and English layout work, reduced-motion disables the font transition |
-| Packaged AppImage                           | Passed on an isolated display: 17.35 px preview, persistence after closing/reloading and reset; existing native clipboard, images, steering, YOLO, terminal, goals and notification workflows                                                             |
-| Ubuntu artifacts                            | `.deb` metadata inspected, AppImage executed, SHA-256 checksums produced                                                                                                                                                                                  |
+| Check                                       | Result / coverage                                                                                                                                                            |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Formatting, TypeScript and production build | Passed                                                                                                                                                                       |
+| Unit / protocol integration                 | 19 tests passed; compaction events, terminal errors, preserved settings and rejection of work already running before Desk connects                                           |
+| Browser workflows                           | 20 tests passed; progress, failed compaction, explicit retry, service `content_filter` with no item, reload, both languages and new-conversation action                      |
+| Installed CLI                               | 0.154.0 and 0.155.1 passed an isolated loopback Responses test: compaction failure and success reach both clients, history remains readable and YOLO settings stay unchanged |
+| Packaged AppImage                           | Passed: packaged Electron IPC compaction, shared terminal, native clipboard/images, steering, YOLO, font preferences, goals and completion notifications                     |
+| Ubuntu artifacts                            | AppImage executed; .deb metadata inspected; .deb and AppImage source bundle hashes match; SHA-256 checksums generated                                                        |
 
 ## Reproduce
 
@@ -18,16 +19,19 @@ npm run format:check
 npm run typecheck
 npm test
 npm run test:e2e
+npm run test:compact
 npm run package:linux
-APPIMAGE_EXTRACT_AND_RUN=1 DESK_TEST_CLIPBOARD=1 \
-  DESK_EXECUTABLE="$PWD/release/codex-desk-0.2.4-x86_64.AppImage" \
+APPIMAGE_EXTRACT_AND_RUN=1 DESK_TEST_CLIPBOARD=1 DESK_TEST_NO_SANDBOX=1 \
+  DESK_EXECUTABLE="$PWD/release/codex-desk-0.2.5-x86_64.AppImage" \
   npm run test:native
 ```
 
-Native smoke checks require `gnome-terminal python3-gi gir1.2-gtk-3.0 openbox xvfb dbus-x11 x11-utils xauth libxtst6`. They use a private Xvfb display, D-Bus session and temporary app data. Only test-owned CLI processes are cleaned up; the user's shared server and workspaces are untouched.
+`test:compact` uses the installed CLI, a temporary workspace and CODEX_HOME, and a loopback synthetic provider. `DESK_LIVE_BINARY` selects a specific executable. No account, external model call or user conversation is used. The native smoke run disabled the Chromium OS sandbox for the isolated test environment; context isolation, disabled Node integration and the renderer sandbox preference were checked. It does not validate OS sandbox enforcement. Native checks use a private Xvfb display and D-Bus session; see the [previous release validation](VALIDATION-0.2.4.md) for prerequisites.
 
 ## Behavior and limits
 
-The slider uses 0.01 px precision over the existing 12–22 px range. The renderer previews at most once per animation frame, with an 80 ms font transition. Pointer release, blur and closing Settings commit pending changes; keyboard controls and assistive input also save automatically. Reduced-motion preference disables the transition. Native Ubuntu Terminal retains its own font profile.
+`thread/compact/start` acknowledges submission, while turn/item events report its outcome. The official `contextCompaction` item has no status field; Desk derives status from lifecycle events and preserves terminal failures. Pre-sampling errors with no items are also shown after reopening a conversation.
 
-This update changes local appearance preferences only. CLI synchronization, permission precedence and steering are covered by the unchanged protocol tests and packaged smoke workflows. The installed-CLI steering validation from 0.2.3 is recorded in the [previous release validation](VALIDATION-0.2.3.md).
+Remote `content_filter` means the service rejected the compaction response. This release explains that error and keeps its original details. It does not claim to repair or bypass the service, silently change a model or permissions, delete history, or automatically retry a filtered response. Other failures offer an explicit retry; a new-conversation action leaves the original thread available.
+
+The real CLI check covers protocol behavior against a synthetic provider. It cannot establish that an external service will accept a particular conversation. Initial browser validation encountered a transient Chrome screenshot-capture error; the isolated rerun and complete 20-test rerun passed.

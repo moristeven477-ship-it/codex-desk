@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { reduceThread } from '../src/lib/events';
+import { compactionFailure } from '../src/shared/errors';
 import type { Thread, CodexEvent } from '../src/shared/types';
 const empty = (): Thread => ({
   id: 'a',
@@ -57,4 +58,47 @@ test('real Codex outputDelta and summaryTextDelta event names stream correctly',
   });
   assert.equal(state.turns[0].items[0].aggregatedOutput, 'passed');
   assert.deepEqual(state.turns[0].items[1].summary, ['Checking']);
+});
+
+test('compaction lifecycle uses notifications and terminal turn errors without inventing success', () => {
+  const item = { id: 'c', type: 'contextCompaction' };
+  const started = reduceThread(empty(), {
+    kind: 'notification',
+    method: 'item/started',
+    params: { threadId: 'a', turnId: 't', item },
+  });
+  assert.equal(started.turns[0].items[0].status, 'inProgress');
+  const failed = reduceThread(started, {
+    kind: 'notification',
+    method: 'turn/completed',
+    params: {
+      threadId: 'a',
+      turn: {
+        id: 't',
+        status: 'failed',
+        items: [],
+        error: { message: 'Error running remote compact task: content_filter' },
+      },
+    },
+  });
+  assert.equal(failed.turns[0].items[0].status, 'failed');
+  assert.equal(compactionFailure(failed.turns[0].error!.message), 'filtered');
+  assert.equal(compactionFailure('Error during compaction: connection reset'), 'failed');
+  assert.equal(compactionFailure('ordinary response: content_filter'), undefined);
+  const compacted = reduceThread(started, {
+    kind: 'notification',
+    method: 'item/completed',
+    params: { threadId: 'a', turnId: 't', item },
+  });
+  assert.equal(compacted.turns[0].items[0].status, 'completed');
+  const laterFailure = reduceThread(compacted, {
+    kind: 'notification',
+    method: 'turn/completed',
+    params: {
+      threadId: 'a',
+      turn: { id: 't', status: 'failed', items: [item], error: { message: 'An unrelated tool failed' } },
+    },
+  });
+  assert.equal(laterFailure.turns[0].items[0].status, 'completed');
+  assert.equal(started.turns[0].items[0].status, 'inProgress', 'previous state must stay immutable');
 });

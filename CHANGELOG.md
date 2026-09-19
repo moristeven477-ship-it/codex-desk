@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.5
+
+- Show context compaction progress, completion, failure and interruption from the official CLI events. A successful start acknowledgement is not treated as a completed compaction.
+- Explain remote `content_filter` compaction failures in English and Simplified Chinese, including failures before an item is emitted. Keep the original error available after reload and preserve the conversation. Offer manual retry for other failures and a new-conversation action.
+- Check live thread status before manual compaction, including CLI tasks already running when Desk connects. Keep standalone-writer commands in the synchronization flow and scope asynchronous error banners to the selected thread.
+- Validate compaction failure/success with the unmodified Codex CLI 0.154.0 and 0.155.1 against a private synthetic provider; confirm shared history and unchanged YOLO settings. Remote service content filters are reported, not bypassed or claimed fixed.
+
 ## 0.2.4
 
 - Make font sizing continuous with 0.01 px pointer precision and a short visual transition. Respect reduced-motion preferences.

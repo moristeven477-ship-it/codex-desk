@@ -188,6 +188,9 @@ try {
   await page.getByRole('button', { name: 'Start goal', exact: true }).click();
   await expect(page.locator('.goal-badge')).toContainText('Pursuing goal');
   await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await composer.fill('/compact');
+  await composer.press('Enter');
+  await expect(page.locator('.compaction-status').last()).toContainText('Context compacted');
   await page.getByRole('textbox', { name: 'Message Codex' }).fill('/mcp verbose');
   await page.getByRole('textbox', { name: 'Message Codex' }).press('Enter');
   await expect(page.locator('.xterm-screen')).toContainText('CODEX_CLI_FIXTURE_READY');
@@ -231,6 +234,7 @@ try {
       messageCopy: 'user and assistant text verified against native clipboard',
       fontSize: 'live preview, persistence after reload and reset',
       steer: 'running turn accepts a second user message through native IPC',
+      compaction: 'official lifecycle events through native IPC',
       completionNotices: 'in-app toast + captured native notification click',
       rendererSandbox: preferences.sandbox,
       chromiumSandboxDisabledForTest: process.env.DESK_TEST_NO_SANDBOX === '1',

@@ -37,6 +37,21 @@ export function reduceThread(thread: Thread, event: CodexEvent): Thread {
         ...turn,
         items: turn.items?.length ? turn.items : turns[existing].items,
       };
+    const updated = turns[existing < 0 ? turns.length - 1 : existing];
+    if (event.method === 'turn/completed') {
+      updated.items = updated.items.map((item) =>
+        item.type === 'contextCompaction' && (!item.status || item.status === 'inProgress')
+          ? {
+              ...item,
+              status:
+                thread.turns.find((t) => t.id === turn.id)?.items.find((i) => i.id === item.id)?.status ===
+                'completed'
+                  ? 'completed'
+                  : turn.status,
+            }
+          : item,
+      );
+    }
     return {
       ...thread,
       turns,
@@ -53,8 +68,14 @@ export function reduceThread(thread: Thread, event: CodexEvent): Thread {
   }
   const turn = { ...turns[turnIndex], items: [...turns[turnIndex].items] };
   if (event.method === 'item/started' || event.method === 'item/completed') {
-    const item = p.item as Item;
-    if (!item?.id) return thread;
+    const incoming = p.item as Item;
+    if (!incoming?.id) return thread;
+    // The official contextCompaction item has no status field. Its lifecycle
+    // comes from the notification, unlike commandExecution and fileChange.
+    const item =
+      incoming.type === 'contextCompaction'
+        ? { ...incoming, status: event.method === 'item/started' ? 'inProgress' : 'completed' }
+        : incoming;
     const index = turn.items.findIndex((i) => i.id === item.id);
     if (index < 0) turn.items.push(item);
     else turn.items[index] = { ...turn.items[index], ...item };

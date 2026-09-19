@@ -374,7 +374,13 @@ export class DeskService extends EventEmitter {
       case 'thread.compact': {
         const args = threadArgs.parse(params);
         await this.resume(args.threadId);
-        if (this.activeTurns.has(args.threadId))
+        // A CLI turn may already be running when Desk joins the thread, before
+        // this client has received any turn/started notification.
+        const { thread } = await this.codex.request<{ thread: Thread }>('thread/read', {
+          ...args,
+          includeTurns: false,
+        });
+        if (this.activeTurns.has(args.threadId) || thread.status.type === 'active')
           throw new Error('Wait for the running turn before compacting.');
         return this.codex.request('thread/compact/start', args);
       }

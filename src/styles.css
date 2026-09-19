@@ -1621,6 +1621,41 @@ select option {
 .turn-error {
   color: var(--danger);
 }
+.compaction-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+  font-size: 0.75rem;
+  color: var(--secondary);
+}
+.compaction-status.failed {
+  color: var(--danger);
+}
+.compaction-error {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--danger-bg);
+  line-height: 1.7;
+}
+.compaction-error p {
+  margin: 6px 0 10px;
+}
+.compaction-error summary {
+  cursor: pointer;
+}
+.compaction-error pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--secondary);
+}
+.compaction-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
 .working-indicator {
   display: flex;
   align-items: center;

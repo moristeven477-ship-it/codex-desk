@@ -71,6 +71,8 @@ const loaded = new Set(['fixture-history']);
 let lastTurnParams;
 let lastSteerParams;
 let settingsDelay = 0;
+let compactionMode = 'success';
+let compactionItem = true;
 const currentSettings = (thread) =>
   settings.get(thread.id) || {
     model: thread.model || 'test-codex',
@@ -249,10 +251,44 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       reply({});
       notify('thread/goal/cleared', { threadId: thread.id });
       break;
-    case 'thread/compact/start':
+    case 'thread/compact/start': {
+      if (thread.status.type === 'active') {
+        write({ id: message.id, error: { code: -32600, message: 'Thread is already active.' } });
+        break;
+      }
+      const turn = { id: `compact-${++turnCounter}`, status: 'inProgress', items: [], error: null };
+      const mode = compactionMode;
+      thread.turns.push(turn);
+      thread.status = { type: 'active' };
       reply({});
-      notify('thread/compacted', { threadId: thread.id });
+      notify('turn/started', { threadId: thread.id, turn });
+      const item = { id: 'compaction-' + turn.id, type: 'contextCompaction' };
+      if (compactionItem) {
+        turn.items.push(item);
+        notify('item/started', { threadId: thread.id, turnId: turn.id, item });
+      }
+      setTimeout(() => {
+        if (turn.status !== 'inProgress') return;
+        if (mode !== 'success') {
+          turn.status = 'failed';
+          turn.error = {
+            message:
+              'Error running remote compact task: ' +
+              (mode === 'filtered'
+                ? 'stream disconnected before completion: Incomplete response returned, reason: content_filter'
+                : 'stream disconnected before completion: connection reset'),
+          };
+          notify('error', { threadId: thread.id, turnId: turn.id, error: turn.error, willRetry: false });
+        } else {
+          turn.status = 'completed';
+          if (!turn.items.length) turn.items.push(item);
+          notify('item/completed', { threadId: thread.id, turnId: turn.id, item });
+        }
+        thread.status = { type: 'idle' };
+        notify('turn/completed', { threadId: thread.id, turn: { ...turn, items: [] } });
+      }, 350);
       break;
+    }
     case 'thread/start': {
       const created = {
         ...threads[0],
@@ -385,6 +421,11 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       break;
     case 'test.settingsDelay':
       settingsDelay = p.milliseconds;
+      reply({});
+      break;
+    case 'test.compaction':
+      compactionMode = p.mode;
+      compactionItem = p.item !== false;
       reply({});
       break;
     case 'test.lock':

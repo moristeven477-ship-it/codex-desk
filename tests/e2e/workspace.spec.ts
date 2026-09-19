@@ -520,6 +520,55 @@ test('CLI-only commands open an interactive embedded terminal', async ({ page })
   await expect(page.getByRole('dialog', { name: 'Codex CLI · 同一会话' })).toBeVisible();
 });
 
+test('compaction shows progress and a recoverable failure, then retries on the same thread', async ({
+  page,
+  setup,
+}) => {
+  await page.getByRole('button', { name: /Understand the project/ }).click();
+  await setup.codex.request('test.compaction', { mode: 'failed' });
+  const composer = page.getByRole('textbox', { name: '发送给 Codex 的消息' });
+  await composer.fill('/compact');
+  await composer.press('Enter');
+  await expect(page.getByText('正在压缩上下文…', { exact: true })).toBeVisible();
+  await expect(page.locator('.compaction-error')).toContainText('可稍后重试');
+  await expect(page.locator('.compaction-status')).toContainText('上下文压缩失败');
+  await expect(page.locator('.completion-toast')).toContainText('任务执行失败');
+  await setup.codex.request('test.compaction', { mode: 'success' });
+  await page.getByRole('button', { name: '重试压缩', exact: true }).click();
+  await expect(page.locator('.compaction-status').last()).toContainText('上下文已压缩');
+  await expect(page.locator('.completion-toast')).toContainText('任务已完成');
+  await expect(page.locator('.error-banner')).toHaveCount(0);
+  await expect(page.locator('.markdown')).toContainText('Atlas');
+  expect(setup.store.state.settings.lastThreadId).toBe('fixture-history');
+  await page.reload();
+  await expect(page.locator('.compaction-status').last()).toContainText('上下文已压缩');
+});
+
+test('filtered pre-sampling compaction errors remain actionable after reload in both languages', async ({
+  page,
+  setup,
+}) => {
+  await page.getByRole('button', { name: /Understand the project/ }).click();
+  await setup.codex.request('test.compaction', { mode: 'filtered', item: false });
+  await setup.codex.request('thread/compact/start', { threadId: 'fixture-history' });
+  await expect(page.locator('.compaction-error')).toContainText('content_filter');
+  await expect(page.getByRole('button', { name: '重试压缩', exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator('.compaction-error')).toContainText('原会话已保留');
+  await page.locator('.compaction-error summary').click();
+  await expect(page.locator('.compaction-error pre')).toContainText('Incomplete response returned');
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByLabel('界面语言', { exact: true }).selectOption('en');
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page.locator('.compaction-error')).toContainText('This conversation is preserved');
+  await page.screenshot({ path: 'test-results/compaction-error-en.png', animations: 'disabled' });
+  await page.getByRole('button', { name: 'Start a new conversation', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'What shall we build today?' })).toBeVisible();
+  const original = (await setup.handle('thread.read', { threadId: 'fixture-history' })) as Thread;
+  expect(original.turns[0].items[1].text).toContain('Atlas');
+  expect(original.turns.at(-1)!.error!.message).toContain('content_filter');
+});
+
 const clipboardPng =
   'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAL0lEQVR4nO3OIQEAAAgDMKJSG0UUiHEzMb+a3ksqAQEBAQEBAQEBAQEBAQGBdOABxQdctdynpFgAAAAASUVORK5CYII=';
 async function pasteFixture(page: import('@playwright/test').Page, count = 1, oversized = false) {
