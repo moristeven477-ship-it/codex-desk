@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.7
+
+- Show steering text, attachment names and delivery status above the composer as soon as it is submitted. Keep pending receipts across conversation changes and restarts; support copying in English and Simplified Chinese.
+- Match receipts to the CLI's official `clientId` after consumption, including repeated identical inputs and events that arrive before the request acknowledgement. Interrupted or uncertain submissions stay visible without implying receipt or automatically resending them.
+- Follow the latest messages when opening a conversation or submitting steering, including delayed layout and viewport changes. Preserve the user's scroll position when reading older content.
+- Validate delayed consumption and persisted client IDs with unmodified Codex CLI 0.154.0 and 0.155.1. Steering continues to use the same turn and the CLI's current settings.
+
 ## 0.2.6
 
 - Add a Fast toggle beside the model/effort controls, plus native `/fast on`, `/fast off` and `/fast status`. Use the installed CLI's advertised service tiers, show increased usage in the tooltip, and wait for the CLI to confirm changes. Fast remains a per-conversation setting; ordinary sends inherit CLI state and leave the model, permissions and global configuration alone.

@@ -285,8 +285,9 @@ test('running CLI tasks accept repeated text and image steering from Desk and pr
   await expect(page.getByRole('button', { name: '停止任务', exact: true })).toBeVisible();
   const originalHandle = setup.handle.bind(setup);
   setup.handle = async (method, params) => {
+    const result = await originalHandle(method, params);
     if (method === 'turn.steer') await new Promise((resolve) => setTimeout(resolve, 300));
-    return originalHandle(method, params);
+    return result;
   };
   await composer.fill('再补充一句');
   await composer.press('Shift+Enter');
@@ -295,6 +296,7 @@ test('running CLI tasks accept repeated text and image steering from Desk and pr
   await composer.fill('确认前继续输入的新草稿');
   await expect(page.locator('.user-text').last()).toHaveText('再补充一句');
   await expect(steer).toBeEnabled();
+  await expect(page.locator('.steering-queue')).toHaveCount(0);
   await expect(composer).toHaveValue('确认前继续输入的新草稿');
   expect(((await setup.handle('thread.read', { threadId })) as Thread).turns).toHaveLength(2);
   await page.screenshot({ path: 'test-results/steer-zh.png', animations: 'disabled' });
@@ -308,9 +310,128 @@ test('running CLI tasks accept repeated text and image steering from Desk and pr
   await composer.fill('这句必须保留');
   await pasteFixture(page);
   await steer.click();
-  await expect(page.getByRole('alert')).toContainText('插话未发送，输入已保留');
+  await expect(page.getByRole('alert')).toContainText('未能确认插话提交，输入已保留');
   await expect(composer).toHaveValue('这句必须保留');
   await expect(page.locator('.image-attachments img')).toHaveCount(1);
+  await expect(page.locator('.steering-queue')).toContainText('这句必须保留');
+  await expect(page.locator('.steering-delivery')).toHaveText('尚未确认接收');
+  expect(((await setup.handle('thread.read', { threadId })) as Thread).turns).toHaveLength(2);
+});
+
+test('queued steering stays visible before CLI consumption, survives reload, and reconciles identical messages by ID', async ({
+  page,
+  setup,
+}) => {
+  await page.getByRole('button', { name: /Understand the project/ }).click();
+  const threadId = 'fixture-history';
+  const longHistory = Array.from({ length: 65 }, (_, index) => `Earlier project note ${index + 1}`).join(
+    '\n',
+  );
+  await setup.codex.request('turn/start', { threadId, input: [{ type: 'text', text: longHistory }] });
+  await expect(page.locator('.assistant-message')).toHaveCount(2);
+  const { turn } = await setup.codex.request<{ turn: { id: string } }>('turn/start', {
+    threadId,
+    input: [{ type: 'text', text: 'wait for delayed steering' }],
+  });
+  await setup.codex.request('test.deferSteers', { enabled: true });
+  await page.locator('.chat-scroll').evaluate((element) => {
+    element.scrollTop = 0;
+    element.dispatchEvent(new Event('scroll'));
+  });
+  await expect(page.getByRole('button', { name: '跳到最新消息' })).toBeVisible();
+  const original = setup.handle.bind(setup);
+  setup.handle = async (method, params) => {
+    if (method === 'turn.steer') await new Promise((resolve) => setTimeout(resolve, 600));
+    return original(method, params);
+  };
+  const text = '先检查失败的测试。\n保留当前 CLI 设置。';
+  const composer = page.getByRole('textbox', { name: '发送给 Codex 的消息' });
+  await composer.fill(text);
+  await pasteFixture(page);
+  await composer.press('Enter');
+  const queue = page.getByRole('region', { name: '已提交的插话' });
+  await expect(queue).toBeInViewport({ ratio: 1 });
+  await expect(queue.locator('.steering-text')).toHaveText(text);
+  await expect(queue.locator('.steering-delivery')).toHaveText('正在提交…');
+  await expect(queue.locator('.steering-delivery')).toHaveText('已提交 · 等待 Codex 接收');
+  await expect(queue.locator('.attachment-label')).toContainText('clipboard-');
+  await expect(composer).toHaveValue('');
+  await expect(page.getByRole('button', { name: '跳到最新消息' })).toHaveCount(0);
+  const first = await setup.codex.request<{ clientUserMessageId: string }>('test.lastSteer');
+  expect(first.clientUserMessageId).toBeTruthy();
+  const before = (await setup.handle('thread.read', { threadId })) as Thread;
+  expect(before.turns.at(-1)!.items.filter((item) => item.type === 'userMessage')).toHaveLength(1);
+  await page.screenshot({ path: 'test-results/steering-queued-zh.png', animations: 'disabled' });
+  await page.reload();
+  await expect(queue.locator('.steering-text')).toHaveText(text);
+  await expect(queue.locator('.steering-delivery')).toHaveText('已提交 · 等待 Codex 接收');
+  await page.locator('.new-conversation').click();
+  await expect(queue).toHaveCount(0);
+  await page.getByRole('button', { name: /Understand the project/ }).click();
+  await expect(queue.locator('.steering-text')).toHaveText(text);
+  await composer.fill(text);
+  await composer.press('Enter');
+  await expect(queue.locator('.steering-delivery')).toHaveText([
+    '已提交 · 等待 Codex 接收',
+    '已提交 · 等待 Codex 接收',
+  ]);
+  const second = await setup.codex.request<{ clientUserMessageId: string; expectedTurnId: string }>(
+    'test.lastSteer',
+  );
+  expect(second.clientUserMessageId).not.toBe(first.clientUserMessageId);
+  expect(second.expectedTurnId).toBe(turn.id);
+  await setup.codex.request('test.deliverSteers', { threadId, clientId: first.clientUserMessageId });
+  await expect(queue.locator('.steering-entry')).toHaveCount(1);
+  const firstBubble = page.locator(`.user-message[data-client-id="${first.clientUserMessageId}"]`);
+  const secondBubble = page.locator(`.user-message[data-client-id="${second.clientUserMessageId}"]`);
+  await expect(firstBubble).toHaveCount(1);
+  await expect(firstBubble).toBeInViewport({ ratio: 1 });
+  await setup.codex.request('test.deliverSteers', { threadId, clientId: second.clientUserMessageId });
+  await expect(queue).toHaveCount(0);
+  await expect(secondBubble).toHaveCount(1);
+  await expect(secondBubble).toBeInViewport({ ratio: 1 });
+  await setup.codex.request('test.finishTurn', { threadId });
+  await expect(page.locator('.markdown').last()).toContainText('deferred steering test completed');
+  await page.reload();
+  await expect(firstBubble).toHaveCount(1);
+  await expect(secondBubble).toHaveCount(1);
+  await expect(queue).toHaveCount(0);
+  await expect(secondBubble).toBeInViewport({ ratio: 1 });
+});
+
+test('interrupted steering remains readable and copyable with honest receipt status in both languages', async ({
+  page,
+  setup,
+  context,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.getByRole('button', { name: /Understand the project/ }).click();
+  const threadId = 'fixture-history';
+  const { turn } = await setup.codex.request<{ turn: { id: string } }>('turn/start', {
+    threadId,
+    input: [{ type: 'text', text: 'wait before consuming steering' }],
+  });
+  await setup.codex.request('test.deferSteers', { enabled: true });
+  const text = 'Keep this steering visible if the task stops.';
+  const composer = page.getByRole('textbox', { name: '发送给 Codex 的消息' });
+  await composer.fill(text);
+  await composer.press('Enter');
+  await expect(page.locator('.steering-delivery')).toHaveText('已提交 · 等待 Codex 接收');
+  await setup.codex.request('turn/interrupt', { threadId, turnId: turn.id });
+  await expect(page.locator('.steering-delivery')).toHaveText('尚未确认接收');
+  await page.reload();
+  await expect(page.locator('.steering-text')).toHaveText(text);
+  await expect(page.locator('.steering-delivery')).toHaveText('尚未确认接收');
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByRole('combobox', { name: '界面语言' }).selectOption('en');
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  const queue = page.getByRole('region', { name: 'Submitted steering' });
+  await expect(queue).toBeInViewport({ ratio: 1 });
+  await expect(queue.locator('.steering-delivery')).toHaveText('Receipt not confirmed');
+  await queue.getByRole('button', { name: 'Copy message', exact: true }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(text);
+  await queue.getByRole('button', { name: 'Hide this steering receipt' }).click();
+  await expect(queue).toHaveCount(0);
   expect(((await setup.handle('thread.read', { threadId })) as Thread).turns).toHaveLength(2);
 });
 

@@ -1,6 +1,7 @@
 // Exercise the installed, unmodified CLI against a loopback Responses fixture.
 // No account, external model request, user workspace or shared server is used.
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { createServer, type ServerResponse } from 'node:http';
 import { spawn } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
@@ -13,6 +14,12 @@ import { CodexProcess } from '../electron/codex';
 import { socketReady } from '../electron/shared-server';
 import type { CodexEvent, Thread, Turn } from '../src/shared/types';
 import { reduceThread } from '../src/lib/events';
+import {
+  reconcileSteerEvent,
+  reconcileSteerHistory,
+  setSteerPhase,
+  type PendingSteer,
+} from '../src/shared/steering';
 
 const root = await mkdtemp(path.join(tmpdir(), 'desk-real-steer-'));
 const cliHome = path.join(root, 'cli');
@@ -124,14 +131,32 @@ try {
     input: [{ type: 'text', text: 'Initial input from the CLI client.' }],
   });
   await until(() => !!held, 'real CLI did not reach the local Responses fixture');
+  const clientId = randomUUID();
+  const pending: PendingSteer[] = [
+    {
+      clientId,
+      threadId: thread.id,
+      turnId: turn.id,
+      text: 'Additional direction from Desk.',
+      images: [],
+      phase: 'sending',
+    },
+  ];
   assert.deepEqual(
     await desk.handle('turn.steer', {
       threadId: thread.id,
       expectedTurnId: turn.id,
-      text: 'Additional direction from Desk.',
+      clientUserMessageId: clientId,
+      text: pending[0].text,
     }),
     { turnId: turn.id },
   );
+  const submitted = setSteerPhase(pending, clientId, 'submitted');
+  const beforeDelivery = (await desk.handle('thread.read', { threadId: thread.id })) as Thread;
+  assert.ok(!beforeDelivery.turns.flatMap((turn) => turn.items).some((item) => item.clientId === clientId));
+  assert.equal(reconcileSteerHistory(submitted, beforeDelivery), submitted);
+  assert.equal(events.reduce(reconcileSteerEvent, submitted), submitted);
+  assert.equal(submitted[0].text, 'Additional direction from Desk.');
   await cli.request('turn/steer', {
     threadId: thread.id,
     expectedTurnId: turn.id,
@@ -155,6 +180,9 @@ try {
   assert.equal(history.turns[0].status, 'completed');
   const users = history.turns[0].items.filter((item) => item.type === 'userMessage');
   assert.equal(users.length, 3);
+  assert.equal(users.filter((item) => item.clientId === clientId).length, 1);
+  assert.deepEqual(reconcileSteerHistory(submitted, history), []);
+  assert.deepEqual(events.reduce(reconcileSteerEvent, submitted), []);
   const rendered = events.reduce(reduceThread, { ...thread, turns: [] });
   assert.equal(rendered.turns[0].items.filter((item) => item.type === 'userMessage').length, 3);
   assert.deepEqual(
@@ -240,6 +268,8 @@ try {
       liveSettings: 'YOLO preserved',
       staleAndCompletedSteers: 'rejected',
       liveUserMessages: 'preserved after the summary completion',
+      steeringVisibility:
+        'receipt persists before consumption; official clientId reconciles live and saved history',
       fast: 'CLI default inherited; Desk/CLI toggles synchronized; request tiers verified',
     }),
   );
@@ -249,11 +279,26 @@ try {
   await new Promise<void>((resolve) => provider.close(() => resolve()));
   await desk.codex.stop();
   await cli.stop();
-  if (server.pid) {
-    try {
-      process.kill(-server.pid, 'SIGTERM');
-    } catch {}
-  }
+  if (server.pid && server.exitCode === null && server.signalCode === null)
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        // This process group belongs only to the private server created above.
+        // Some CLI versions keep background workers alive after SIGTERM.
+        try {
+          process.kill(-server.pid!, 'SIGKILL');
+        } catch {}
+      }, 3000);
+      server.once('exit', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      try {
+        process.kill(-server.pid!, 'SIGTERM');
+      } catch {
+        clearTimeout(timer);
+        resolve();
+      }
+    });
   await delay(100);
   await rm(root, { recursive: true, force: true });
 }

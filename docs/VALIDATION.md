@@ -1,17 +1,27 @@
-# Release validation — 0.2.6
+# Release validation — 0.2.7
 
 Validated on Ubuntu 24.04.4 x86-64 (X11), Node.js 22.23.2 and Electron 44.3.0 on 2026-09-19.
 
 ## Checks
 
-| Check                                       | Result / coverage                                                                                                                                                                                               |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Formatting, TypeScript and production build | Passed                                                                                                                                                                                                          |
-| Unit / protocol integration                 | 21 tests passed; summary merging, CLI settings inheritance, confirmed Fast changes, failure handling and unchanged permissions                                                                                  |
-| Browser workflows                           | 22 tests passed; Fast toggle, slash commands, CLI updates, pending/error states, unsupported models, messages from both clients, navigation and reload                                                          |
-| Unmodified Codex CLI                        | 0.154.0 and 0.155.1 passed isolated loopback Responses checks: Fast defaults, on/off synchronization, actual request tiers, summary completion retaining three user messages and unchanged YOLO                 |
-| Packaged AppImage                           | Passed: Fast through native IPC, user/assistant copy after summary completion, clipboard/images, steering, compaction, goals, font preferences, completion notifications and background terminal reuse/survival |
-| Ubuntu artifacts                            | AppImage executed; .deb version/architecture checked; .deb and AppImage source bundles match; SHA-256 checksums generated                                                                                       |
+| Check                                       | Result / coverage                                                                                                                                                                                                                        |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Formatting, TypeScript and production build | Passed                                                                                                                                                                                                                                   |
+| Unit / protocol integration                 | 23 tests passed; receipt correlation, uncertain delivery, summary merging, settings inheritance, shared clients and permissions                                                                                                          |
+| Browser workflows                           | 24 tests passed; pending steering text/images, delayed acknowledgement/consumption, duplicate text with distinct IDs, reload/navigation, interruption, bilingual copy/status and viewport visibility                                     |
+| Unmodified Codex CLI                        | 0.154.0 and 0.155.1 passed isolated loopback Responses checks: acknowledgement before consumption, official client IDs in events/persisted history, one shared turn, unchanged YOLO and Fast synchronization                             |
+| Packaged AppImage                           | Passed: visible pending content through native IPC, reload persistence, native clipboard copy, exactly one visible message after delivery; existing image/clipboard, compaction, goal, font, notification and background terminal checks |
+| Ubuntu artifacts                            | AppImage executed; .deb version/architecture checked; .deb and tested application source bundles match; SHA-256 checksums generated                                                                                                      |
+
+## Steering behavior
+
+The real CLI can acknowledge `turn/steer` before it emits a user-message item. The local provider holds a model response to reproduce that interval. Desk immediately keeps a visible local receipt above the composer and sends a unique `clientUserMessageId`. An official user message with the matching `clientId` replaces the pending display, including when the notification arrives before the request acknowledgement. Identical text is never used to correlate messages.
+
+Only text and attachment paths are saved locally. Switching conversations or reopening the window restores pending receipts; they are never automatically resent. A request error, interrupted/completed turn without receipt, or reload during submission keeps the content with an unconfirmed status. A later official receipt remains authoritative. Hiding an uncertain notice only removes the local display; it does not withdraw input from Codex.
+
+The browser tests assert viewport visibility after scrolling up, submitting steering, delayed receipt and reopening a long conversation. The native test exercises the packaged AppImage, reloads while delivery is deferred, copies the pending text through the native clipboard, then verifies one official visible message. The screenshot below contains synthetic test data only.
+
+![Pending steering in the Ubuntu AppImage](screenshots/steering-pending.png)
 
 ## Reproduce
 
@@ -24,18 +34,16 @@ npm run test:e2e
 npm run test:steer
 npm run package:linux
 APPIMAGE_EXTRACT_AND_RUN=1 DESK_TEST_CLIPBOARD=1 DESK_TEST_NO_SANDBOX=1 \
-  DESK_EXECUTABLE="$PWD/release/codex-desk-0.2.6-x86_64.AppImage" \
+  DESK_EXECUTABLE="$PWD/release/codex-desk-0.2.7-x86_64.AppImage" \
   npm run test:native
 ```
 
-`test:steer` uses the installed CLI with a temporary workspace, CODEX_HOME and loopback Responses provider. `DESK_LIVE_BINARY` selects an executable. It uses no account, external model request or user conversation. Both 0.154.0 and 0.155.1 were exercised.
+`test:steer` uses the installed CLI with a temporary workspace, CODEX_HOME and loopback Responses provider. `DESK_LIVE_BINARY` selects an executable. It uses no account, external model request or user conversation. Both 0.154.0 and 0.155.1 were exercised. Test cleanup reaps only its own isolated server process group.
 
-## Protocol behavior and limits
+## Limits and unchanged protocol behavior
 
-Current CLI versions emit a final `turn/completed` with `itemsView: summary` and only the last assistant answer. Desk now merges partial summaries by item ID, preserving streamed user messages, steering input and tools. Explicitly full snapshots remain authoritative. Persisted history is read with `itemsView: full`; no conversation data is rewritten or forked.
+A pending receipt records what Desk submitted; it does not promise that the model has consumed it. Receipt requires an official CLI message with its client ID. Inputs submitted by other clients become visible when the shared server emits them or history is read. Desk does not have a separate copy of another client's unsent input.
 
-Fast uses the model catalog's service-tier ID (`priority` on the tested CLI), the live thread settings and `thread/settings/update`. Acknowledgement alone does not unlock the composer: Desk waits for the settings notification. Current CLI versions normalize an explicit null clear to `default`; Desk also accepts null from older servers. Ordinary messages and steers omit service-tier overrides. Explicit changes affect this conversation and preserve CLI global defaults, model and permissions.
+Steering uses the current CLI turn and omits model, effort, permission and service-tier overrides. Conversation IDs and stored history remain authoritative. Summary completion merging and confirmed Fast settings are covered in [the 0.2.6 validation](VALIDATION-0.2.6.md).
 
-The isolated provider validates request routing and protocol behavior. It does not measure production latency, account entitlement or billing. The interface describes increased usage without promising a fixed speedup.
-
-The native smoke run uses a private Xvfb display and D-Bus session, with the Chromium OS sandbox disabled for the isolated test environment. Context isolation, disabled Node integration and the renderer sandbox preference are checked; OS sandbox enforcement is not validated. Prerequisites are in [the 0.2.4 validation](VALIDATION-0.2.4.md). See [the 0.2.5 validation](VALIDATION-0.2.5.md) for the preceding compaction changes.
+The native run uses a private Xvfb display and D-Bus session, with the Chromium OS sandbox disabled for the isolated test environment. Context isolation, disabled Node integration and the renderer sandbox preference are checked; OS sandbox enforcement is not validated. Prerequisites are in [the 0.2.4 validation](VALIDATION-0.2.4.md).

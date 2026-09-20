@@ -70,6 +70,9 @@ const settings = new Map();
 const loaded = new Set(['fixture-history']);
 let lastTurnParams;
 let lastSteerParams;
+let steerCounter = 0;
+let deferSteers = false;
+let pendingSteers = [];
 let settingsDelay = 0;
 let settingsError = '';
 let compactionMode = 'success';
@@ -421,10 +424,41 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         break;
       }
       lastSteerParams = p;
-      const user = { id: `steer-${turn.id}-${turn.items.length}`, type: 'userMessage', content: p.input };
-      turn.items.push(user);
+      const user = {
+        id: `steer-${++steerCounter}`,
+        type: 'userMessage',
+        clientId: p.clientUserMessageId ?? null,
+        content: p.input,
+      };
       reply({ turnId: turn.id });
-      notify('item/completed', { threadId: thread.id, turnId: turn.id, item: user });
+      if (deferSteers) pendingSteers.push({ thread, turn, user });
+      else {
+        turn.items.push(user);
+        notify('item/completed', { threadId: thread.id, turnId: turn.id, item: user });
+      }
+      break;
+    }
+    case 'test.deferSteers':
+      deferSteers = p.enabled;
+      reply({});
+      break;
+    case 'test.deliverSteers': {
+      const selected = pendingSteers.filter(
+        (entry) => entry.thread.id === p.threadId && (!p.clientId || entry.user.clientId === p.clientId),
+      );
+      pendingSteers = pendingSteers.filter((entry) => !selected.includes(entry));
+      for (const { thread, turn, user } of selected) {
+        turn.items.push(user);
+        notify('item/started', { threadId: thread.id, turnId: turn.id, item: user });
+        notify('item/completed', { threadId: thread.id, turnId: turn.id, item: user });
+      }
+      reply({});
+      break;
+    }
+    case 'test.finishTurn': {
+      const turn = thread.turns.findLast((turn) => turn.status === 'inProgress');
+      if (turn) finish(thread, turn, 'The deferred steering test completed.');
+      reply({});
       break;
     }
     case 'turn/interrupt': {

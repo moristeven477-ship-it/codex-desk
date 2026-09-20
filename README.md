@@ -19,6 +19,7 @@ _Screenshots show a synthetic test workspace. The application uses your real loc
 - Create, rename, fork, archive, and restore conversations.
 - Stream replies, command output, reasoning summaries, plans, and file changes.
 - Run conversations independently. While a task runs, press **Enter** or click **Steer** to add text/images to that same turn; **Stop** remains separate.
+- See submitted steering above the composer immediately, including its full text, attachment names and delivery status. Pending content survives navigation/restarts and becomes a regular message once the CLI receives it.
 - Copy your messages and Codex replies with the visible **Copy** action below each text message.
 - Adjust **Settings → General → Font size** continuously from 12–22 px, with smooth live preview, saving on release and reset. Arrow keys adjust by 0.1 px; Shift + Arrow adjusts by 1 px.
 - Respond to command/file approvals, permission requests, and Codex questions. Pending requests remain accessible across conversations.
@@ -56,7 +57,7 @@ If Codex already works in your terminal, keep that installation. Codex Desk disc
 Download the `.deb` from [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest), then run:
 
 ```bash
-sudo apt install ./codex-desk-0.2.6-amd64.deb
+sudo apt install ./codex-desk-0.2.7-amd64.deb
 ```
 
 Launch **Codex Desk** from Ubuntu's application menu, or run `codex-desk`.
@@ -66,14 +67,14 @@ The package includes the Electron runtime; Node.js is needed separately only for
 ### Portable AppImage
 
 ```bash
-chmod +x codex-desk-0.2.6-x86_64.AppImage
-./codex-desk-0.2.6-x86_64.AppImage
+chmod +x codex-desk-0.2.7-x86_64.AppImage
+./codex-desk-0.2.7-x86_64.AppImage
 ```
 
 If FUSE is unavailable, run without mounting the AppImage:
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.6-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.7-x86_64.AppImage
 ```
 
 The `.deb` is recommended on Ubuntu 24.04: its installer includes Electron's Ubuntu AppArmor integration. Do not disable Chromium's sandbox to work around an installation problem. See [Troubleshooting](docs/TROUBLESHOOTING.md).
@@ -97,7 +98,7 @@ The `.deb` is recommended on Ubuntu 24.04: its installer includes Electron's Ubu
 
 Language: **Settings → General → Language**. Font size: **Settings → General → Font size**. Appearance preferences are saved automatically. The font slider scales Desk and the embedded CLI; native Ubuntu Terminal keeps its own profile.
 
-Steering uses the current CLI turn and its settings. A rejected steer leaves your draft and attachments in the composer. Slash commands keep their own command behavior.
+Steering uses the current CLI turn and its settings. Acknowledgement can precede CLI consumption: the visible receipt stays until the official user message arrives with its matching client ID. If receipt is unconfirmed, the text remains available to copy; hiding its notice does not withdraw submitted input. Receipts are never automatically resent. A rejected steer also leaves your draft and attachments in the composer. Slash commands keep their own command behavior.
 
 ## CLI ↔ Desk synchronization
 
@@ -206,7 +207,7 @@ npx tsx scripts/live-sync.ts --turns  # real TUI ↔ Desk messages and goals; us
 
 Terminal and native checks automatically use a private Xvfb display and D-Bus session, without starting user desktop services. The live-turn check archives only the test conversation it creates. No live Codex checks run in CI.
 
-`npm run test:steer` validates the installed Codex CLI with a separate home, server and loopback Responses fixture: bidirectional steering, full user-message retention after summary completion, settings inheritance, Fast toggles and actual request tiers, plus stale/completed-turn rejection. It uses no account or external model request.
+`npm run test:steer` validates the installed Codex CLI with a separate home, server and loopback Responses fixture: delayed steering consumption and client-ID receipts, bidirectional steering, full user-message retention after summary completion, settings inheritance, Fast toggles and actual request tiers, plus stale/completed-turn rejection. It uses no account or external model request.
 
 ## Design and license
 

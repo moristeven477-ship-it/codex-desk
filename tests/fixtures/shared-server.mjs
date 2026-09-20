@@ -57,7 +57,12 @@ export async function sharedFixture(root, project) {
     if (!message.method && message.id !== undefined) {
       const request = requests.get(message.id);
       requests.delete(message.id);
-      if (request?.client.readyState === WebSocket.OPEN)
+      if (request?.resolve) {
+        clearTimeout(request.timer);
+        if (message.error) request.reject(new Error(message.error.message));
+        else request.resolve(message.result);
+      }
+      if (request?.client?.readyState === WebSocket.OPEN)
         request.client.send(JSON.stringify({ ...message, id: request.id }));
     } else {
       if (message.id !== undefined) pendingApprovals.add(message.id);
@@ -70,6 +75,17 @@ export async function sharedFixture(root, project) {
   });
   return {
     home,
+    // Test control goes straight to this fixture, never through Desk's IPC API.
+    request: (method, params = {}) =>
+      new Promise((resolve, reject) => {
+        const id = nextId++;
+        const timer = setTimeout(() => {
+          requests.delete(id);
+          reject(new Error(`Fixture request timed out: ${method}`));
+        }, 5000);
+        requests.set(id, { resolve, reject, timer });
+        send({ id, method, params });
+      }),
     close: async () => {
       for (const client of websocket.clients) client.terminate();
       websocket.close();

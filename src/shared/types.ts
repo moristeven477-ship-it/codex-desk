@@ -56,6 +56,7 @@ export interface Input {
 export interface Item {
   id: string;
   type: string;
+  clientId?: string | null;
   text?: string;
   content?: Input[] | string[];
   summary?: string[];

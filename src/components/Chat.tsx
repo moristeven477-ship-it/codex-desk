@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -44,7 +44,7 @@ export function Markdown({ text }: { text: string }) {
     </ReactMarkdown>
   );
 }
-function CopyButton({ text, onError }: { text: string; onError: (error: unknown) => void }) {
+export function CopyButton({ text, onError }: { text: string; onError: (error: unknown) => void }) {
   const t = useT(),
     [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -161,7 +161,7 @@ export function MessageItem({ item, onError }: { item: Item; onError: (error: un
         .map((input) => input.text || '')
         .join('\n\n') || '';
     return (
-      <article className="message user-message">
+      <article className="message user-message" data-client-id={item.clientId ?? undefined}>
         <div className="user-bubble">
           {inputs?.map((input, i) =>
             input.type === 'text' ? (
@@ -210,6 +210,7 @@ export function Chat({
   thread,
   loading,
   running,
+  revealMessage,
   onOlder,
   onError,
   onCompact,
@@ -219,6 +220,7 @@ export function Chat({
   thread?: Thread;
   loading: boolean;
   running: boolean;
+  revealMessage: number;
   onOlder: () => Promise<void>;
   onError: (e: unknown) => void;
   onCompact: () => Promise<boolean>;
@@ -227,16 +229,34 @@ export function Chat({
 }) {
   const t = useT(),
     scrollRef = useRef<HTMLDivElement>(null),
+    contentRef = useRef<HTMLDivElement>(null),
     pinned = useRef(true);
   const [atBottom, setAtBottom] = useState(true),
     [olderLoading, setOlderLoading] = useState(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     pinned.current = true;
     setAtBottom(true);
-  }, [thread?.id]);
+  }, [thread?.id, revealMessage]);
+  useLayoutEffect(() => {
+    if (pinned.current && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      setAtBottom(true);
+    }
+  }, [thread, loading, revealMessage]);
   useEffect(() => {
-    if (pinned.current && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [thread, loading]);
+    const element = scrollRef.current,
+      content = contentRef.current;
+    if (!element || !content) return;
+    const observer = new ResizeObserver(() => {
+      // Markdown, font changes and the steering tray can change the viewport
+      // after a render. Keep the latest message visible only while following it.
+      if (pinned.current) element.scrollTop = element.scrollHeight;
+      setAtBottom(element.scrollHeight - element.scrollTop - element.clientHeight < 90);
+    });
+    observer.observe(element);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
   async function older() {
     const element = scrollRef.current,
       height = element?.scrollHeight ?? 0;
@@ -265,7 +285,7 @@ export function Chat({
           setAtBottom(pinned.current);
         }}
       >
-        <div className="chat-content">
+        <div className="chat-content" ref={contentRef}>
           {thread?.nextTurnsCursor && (
             <button className="load-older" onClick={() => void older()} disabled={olderLoading}>
               {olderLoading && <Loader2 size={14} className="spin" />}

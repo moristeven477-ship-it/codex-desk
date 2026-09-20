@@ -15,6 +15,8 @@ import { ModelPicker, PermissionPicker } from './ChoiceMenu';
 import { CommandMenu } from './CommandMenu';
 import { parseSlash } from '../shared/commands';
 import { fastTier, isFastTier } from '../shared/speed';
+import type { PendingSteer } from '../shared/steering';
+import { SteeringQueue } from './SteeringQueue';
 
 export function Composer({
   models,
@@ -25,6 +27,9 @@ export function Composer({
   onSend,
   onSteer,
   activeTurnId,
+  pendingSteers,
+  steersSaved,
+  onDismissSteer,
   onStop,
   draft,
   onDraft,
@@ -57,6 +62,9 @@ export function Composer({
   ) => Promise<boolean>;
   onSteer: (expectedTurnId: string, text: string, images: string[]) => Promise<boolean>;
   activeTurnId?: string;
+  pendingSteers: PendingSteer[];
+  steersSaved: boolean;
+  onDismissSteer: (clientId: string) => void;
   onCommand: (name: string, args: string) => Promise<boolean>;
   onStop: () => void;
   draft: string;
@@ -293,6 +301,12 @@ export function Composer({
   }
   return (
     <div className="composer-area">
+      <SteeringQueue
+        entries={pendingSteers}
+        saved={steersSaved}
+        onDismiss={onDismissSteer}
+        onError={onError}
+      />
       {commandsOpen && (
         <CommandMenu
           onClose={closeCommands}

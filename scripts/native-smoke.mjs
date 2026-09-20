@@ -171,9 +171,30 @@ try {
   await composer.fill('wait for native steering');
   await composer.press('Enter');
   await expect(page.getByRole('button', { name: 'Steer', exact: true })).toBeVisible();
+  await shared.request('test.deferSteers', { enabled: true });
   await composer.fill('Change direction from the real desktop UI');
   await page.getByRole('button', { name: 'Steer', exact: true }).click();
   await expect(page.locator('.steer-status')).toContainText('Steer sent');
+  const queue = page.getByRole('region', { name: 'Submitted steering' });
+  await expect(queue).toBeInViewport({ ratio: 1 });
+  await expect(queue.locator('.steering-text')).toHaveText('Change direction from the real desktop UI');
+  await expect(queue.locator('.steering-delivery')).toHaveText('Submitted · Waiting for Codex');
+  const pending = await shared.request('test.lastSteer');
+  await page.reload();
+  await expect(queue.locator('.steering-text')).toHaveText('Change direction from the real desktop UI');
+  await queue.getByRole('button', { name: 'Copy message', exact: true }).click();
+  expect(await desktop.evaluate(({ clipboard }) => clipboard.readText())).toBe(
+    'Change direction from the real desktop UI',
+  );
+  await page.screenshot({ path: 'test-results/native-steering-queued.png', animations: 'disabled' });
+  await shared.request('test.deliverSteers', {
+    threadId: pending.threadId,
+    clientId: pending.clientUserMessageId,
+  });
+  await expect(queue).toHaveCount(0);
+  const received = page.locator(`.user-message[data-client-id="${pending.clientUserMessageId}"]`);
+  await expect(received).toHaveCount(1);
+  await expect(received).toBeInViewport({ ratio: 1 });
   await expect(page.locator('.user-text').last()).toHaveText('Change direction from the real desktop UI');
   const steered = await page.evaluate(async () => {
     const boot = await window.codexDesk.request('bootstrap');
@@ -237,7 +258,7 @@ try {
       yoloStartup: 'passed',
       messageCopy: 'user and assistant text verified against native clipboard',
       fontSize: 'live preview, persistence after reload and reset',
-      steer: 'running turn accepts a second user message through native IPC',
+      steer: 'pending content visible, persisted and copyable; delivery becomes one visible CLI message',
       compaction: 'official lifecycle events through native IPC',
       completionNotices: 'in-app toast + captured native notification click',
       rendererSandbox: preferences.sandbox,

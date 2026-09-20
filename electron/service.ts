@@ -32,6 +32,7 @@ const steerArgs = turnArgs
   .pick({ threadId: true, text: true, images: true })
   .extend({
     expectedTurnId: text,
+    clientUserMessageId: z.string().min(1).max(256).optional(),
   })
   .strict();
 
@@ -600,6 +601,7 @@ export class DeskService extends EventEmitter {
         return this.codex.request<{ turnId: string }>('turn/steer', {
           threadId: args.threadId,
           expectedTurnId: args.expectedTurnId,
+          ...(args.clientUserMessageId ? { clientUserMessageId: args.clientUserMessageId } : {}),
           input: [
             ...(args.text.trim() ? [{ type: 'text', text: args.text, text_elements: [] }] : []),
             ...args.images.map((file) => ({ type: 'localImage', path: file })),

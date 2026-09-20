@@ -667,6 +667,7 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
               thread={thread}
               loading={desk.loading}
               running={running}
+              revealMessage={desk.revealMessage}
               onOlder={desk.older}
               onError={desk.fail}
               onCompact={() => runCommand('compact', '')}
@@ -803,6 +804,9 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
             onSend={desk.send}
             onSteer={desk.steer}
             activeTurnId={turn?.id}
+            pendingSteers={desk.pendingSteers}
+            steersSaved={desk.steersSaved}
+            onDismissSteer={desk.dismissSteer}
             draft={draft}
             onDraft={setDraft}
             inputRef={inputRef}

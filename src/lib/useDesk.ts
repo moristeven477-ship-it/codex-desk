@@ -18,6 +18,8 @@ import { APP_VERSION } from '../shared/version';
 import { CompletionTracker, type CompletionNotice } from '../shared/completion';
 import { threadPermissions } from '../shared/permissions';
 import { DEFAULT_FONT_SIZE } from '../shared/appearance';
+import { usePendingSteers } from './usePendingSteers';
+import { reconcileSteerEvent, reconcileSteerHistory, setSteerPhase } from '../shared/steering';
 
 export async function request<T = unknown>(method: string, params?: JsonObject): Promise<T> {
   if (!window.codexDesk) throw new Error('Open Codex Desk using the desktop application.');
@@ -64,6 +66,8 @@ export function useDesk() {
     Record<string, { state: 'preparing' | 'ready' | 'waiting' | 'error'; error?: string }>
   >({});
   const [cache, setCache] = useState<Record<string, Thread>>({});
+  const { entries: pendingSteers, saved: steersSaved, update: updateSteers } = usePendingSteers();
+  const [revealMessage, setRevealMessage] = useState({ threadId: '', revision: 0 });
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -148,6 +152,7 @@ export function useDesk() {
         const hydrated = buffered.reduce(reduceThread, thread);
         if (generation !== selectionGeneration.current) return;
         setCache((old) => ({ ...old, [id]: hydrated }));
+        updateSteers((entries) => reconcileSteerHistory(entries, hydrated));
         if (!background) setNewConversation(!hydrated.turns.length);
         if (!current.current.archived && (!background || thread.syncState === 'live'))
           prepareTerminal(thread);
@@ -162,7 +167,7 @@ export function useDesk() {
         if (!background && generation === selectionGeneration.current) setLoading(false);
       }
     },
-    [fail, prepareTerminal],
+    [fail, prepareTerminal, updateSteers],
   );
 
   useEffect(() => {
@@ -200,6 +205,7 @@ export function useDesk() {
       const p = event.params ?? {};
       const id = p.threadId as string;
       if (id) {
+        updateSteers((entries) => reconcileSteerEvent(entries, event));
         if (
           event.method === 'thread/settings/updated' &&
           id === current.current.threadId &&
@@ -265,7 +271,7 @@ export function useDesk() {
       disposed = true;
       unsubscribe?.();
     };
-  }, [fail, openThread, refresh]);
+  }, [fail, openThread, refresh, updateSteers]);
 
   useEffect(() => {
     const timer = setTimeout(() => void refresh(), search ? 220 : 0);
@@ -493,21 +499,46 @@ export function useDesk() {
   }
   async function steer(expectedTurnId: string, text: string, images: string[]) {
     if (sendingRef.current || !threadId) return false;
+    const targetThread = threadId;
+    const clientId = crypto.randomUUID();
     sendingRef.current = true;
     setSending(true);
     setError('');
+    updateSteers((entries) => [
+      ...entries,
+      {
+        clientId,
+        threadId: targetThread,
+        turnId: expectedTurnId,
+        text,
+        images,
+        phase: 'sending',
+      },
+    ]);
+    setRevealMessage((old) => ({ threadId: targetThread, revision: old.revision + 1 }));
     try {
-      await request('turn.steer', { threadId, expectedTurnId, text, images });
+      await request('turn.steer', {
+        threadId: targetThread,
+        expectedTurnId,
+        clientUserMessageId: clientId,
+        text,
+        images,
+      });
+      // An official item can arrive before the acknowledgement. Never recreate
+      // a receipt that has already been matched to its clientId and removed.
+      updateSteers((entries) => setSteerPhase(entries, clientId, 'submitted'));
       return true;
     } catch (error) {
+      updateSteers((entries) => setSteerPhase(entries, clientId, 'unconfirmed'));
       const reason = error instanceof Error ? error.message : String(error);
-      fail(
-        new Error(
-          (boot.settings.locale === 'zh'
-            ? '插话未发送，输入已保留。'
-            : 'Steer was not sent. Your draft is kept. ') + reason,
-        ),
-      );
+      if (current.current.threadId === targetThread)
+        fail(
+          new Error(
+            (boot.settings.locale === 'zh'
+              ? '未能确认插话提交，输入已保留。'
+              : 'Could not confirm steering submission. Your draft is kept. ') + reason,
+          ),
+        );
       return false;
     } finally {
       sendingRef.current = false;
@@ -553,6 +584,7 @@ export function useDesk() {
       threadId,
       cursor: thread.nextTurnsCursor,
     });
+    updateSteers((entries) => reconcileSteerHistory(entries, { ...thread, turns: page.data }));
     setCache((old) => ({
       ...old,
       [threadId]: {
@@ -579,6 +611,11 @@ export function useDesk() {
     projectId,
     threadId,
     thread: cache[threadId],
+    pendingSteers: pendingSteers.filter((entry) => entry.threadId === threadId),
+    steersSaved,
+    dismissSteer: (clientId: string) =>
+      updateSteers((entries) => entries.filter((entry) => entry.clientId !== clientId)),
+    revealMessage: revealMessage.threadId === threadId ? revealMessage.revision : 0,
     threads,
     cursor,
     approvals,

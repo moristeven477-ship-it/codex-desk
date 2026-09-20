@@ -2766,6 +2766,60 @@ select option {
   font-size: 0.6875rem;
   color: var(--accent);
 }
+.steering-queue {
+  margin-bottom: 10px;
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  background: var(--raised);
+  overflow: hidden;
+}
+.steering-queue > header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 12px;
+  font-size: 0.8125rem;
+  color: var(--accent);
+}
+.steering-entries {
+  max-height: min(220px, 25vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.steering-entry {
+  padding: 8px 12px 12px;
+  border-top: 1px solid var(--border);
+}
+.steering-entry-heading,
+.steering-delivery {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.steering-entry-heading {
+  flex-wrap: wrap;
+}
+.steering-delivery {
+  margin-right: auto;
+  color: var(--secondary);
+  font-size: 0.75rem;
+}
+.steering-delivery.unconfirmed {
+  color: var(--amber);
+}
+.steering-text {
+  margin-top: 7px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.9375rem;
+  line-height: 1.65;
+}
+.steering-storage-error {
+  margin: 8px 12px;
+  font-size: 0.75rem;
+  color: var(--amber);
+}
 .composer-toolbar,
 .composer-tools,
 .setting-row {
