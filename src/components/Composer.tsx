@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowUp, Square, Paperclip, X, Loader2, Slash, ListChecks, CornerUpRight } from 'lucide-react';
+import { ArrowUp, Square, Paperclip, X, Loader2, Slash, ListChecks, CornerUpRight, Zap } from 'lucide-react';
 import type {
   AccessMode,
   CollaborationMode,
@@ -14,6 +14,7 @@ import { useT } from '../lib/i18n';
 import { ModelPicker, PermissionPicker } from './ChoiceMenu';
 import { CommandMenu } from './CommandMenu';
 import { parseSlash } from '../shared/commands';
+import { fastTier, isFastTier } from '../shared/speed';
 
 export function Composer({
   models,
@@ -31,6 +32,8 @@ export function Composer({
   inputRef,
   archived,
   initialModel,
+  initialServiceTier,
+  onServiceTier,
   initialEffort,
   initialAccess,
   initialApprovalPolicy,
@@ -62,6 +65,8 @@ export function Composer({
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   archived: boolean;
   initialModel?: string | null;
+  initialServiceTier?: string | null;
+  onServiceTier: (tier: string | null) => Promise<void>;
   initialEffort?: string | null;
   initialAccess?: PermissionMode;
   initialApprovalPolicy?: ApprovalPolicy;
@@ -86,6 +91,8 @@ export function Composer({
   }, [inputRef]);
   const [images, setImages] = useState<ImageAttachment[]>([]);
   const [steerSent, setSteerSent] = useState(false);
+  const [speedPending, setSpeedPending] = useState(false);
+  const speedLock = useRef(false);
   const latestDraft = useRef(draft);
   latestDraft.current = draft;
   useEffect(() => setSteerSent(false), [activeTurnId]);
@@ -121,6 +128,27 @@ export function Composer({
   const options = savedModel ? [savedModel, ...models] : models;
   const chosen =
     options.find((m) => m.model === effectiveModelId) ?? options.find((m) => m.isDefault) ?? options[0];
+  const fast = isFastTier(initialServiceTier);
+  const fastServiceTier = fastTier(chosen);
+  const speedDisabled = !connected || sending || running || archived || blocked || speedPending;
+  async function changeFast(enabled: boolean) {
+    if (speedLock.current) return false;
+    if (speedDisabled)
+      throw new Error(
+        t('请等待会话就绪后切换 Fast。', 'Wait until the conversation is ready to change Fast.'),
+      );
+    if (enabled && !fastServiceTier)
+      throw new Error(t('当前模型未提供 Fast 模式。', 'Fast mode is not available for this model.'));
+    speedLock.current = true;
+    setSpeedPending(true);
+    try {
+      await onServiceTier(enabled ? fastServiceTier! : null);
+      return true;
+    } finally {
+      speedLock.current = false;
+      if (mounted.current) setSpeedPending(false);
+    }
+  }
   const selectedEffort = chosen?.supportedReasoningEfforts.some((e) => e.reasoningEffort === effectiveEffort)
     ? effectiveEffort
     : (chosen?.defaultReasoningEffort ?? 'medium');
@@ -130,12 +158,21 @@ export function Composer({
     inputRef.current.style.height = 'auto';
     inputRef.current.style.height = Math.min(200, inputRef.current.scrollHeight) + 'px';
   }, [draft, inputRef]);
-  const disabled = !connected || sending || archived || blocked;
+  const disabled = !connected || sending || archived || blocked || speedPending;
   async function command(name: string, args = '') {
     setCommandsOpen(false);
     if (!name) {
       setCommandsOpen(true);
       return true;
+    }
+    if (name === 'fast') {
+      const action = args.trim().toLowerCase();
+      if (action === 'status') return onCommand('status', '');
+      if (action === '' || action === 'on' || action === 'off')
+        return changeFast(action === '' ? !fast : action === 'on');
+      throw new Error(
+        t('用法：/fast on、/fast off 或 /fast status', 'Use /fast on, /fast off or /fast status'),
+      );
     }
     if (name === 'model' && !args) {
       setModelOpen((value) => value + 1);
@@ -344,7 +381,7 @@ export function Composer({
               type="button"
               aria-label={t('Codex 命令', 'Codex commands')}
               title={t('全部 / 命令', 'All / commands')}
-              disabled={!connected || sending}
+              disabled={!connected || sending || speedPending}
               onClick={() => setCommandsOpen(!commandsOpen)}
             >
               <Slash size={17} />
@@ -366,7 +403,7 @@ export function Composer({
               effort={selectedEffort}
               onModel={setModelId}
               onEffort={setEffort}
-              disabled={!options.length || running || sending}
+              disabled={!options.length || running || sending || speedPending}
             />
             {chosen && (
               <ModelPicker
@@ -375,10 +412,35 @@ export function Composer({
                 effort={selectedEffort}
                 onModel={setModelId}
                 onEffort={setEffort}
-                disabled={running || sending}
+                disabled={running || sending || speedPending}
                 effortOnly
               />
             )}
+            <button
+              type="button"
+              className={`fast-toggle ${fast ? 'active' : ''}`}
+              aria-label={t('Fast 模式', 'Fast mode')}
+              aria-pressed={fast}
+              aria-busy={speedPending}
+              disabled={speedDisabled || (!fast && !fastServiceTier)}
+              title={
+                !fast && !fastServiceTier
+                  ? t('当前模型未提供 Fast 模式', 'Fast mode is not available for this model')
+                  : running
+                    ? t('任务结束后可切换 Fast', 'Change Fast after the running task finishes')
+                    : t(
+                        `${fast ? '关闭' : '开启'} Fast · 更快，额度消耗更高`,
+                        `Turn Fast ${fast ? 'off' : 'on'} · Faster, increased usage`,
+                      )
+              }
+              onClick={() => void changeFast(!fast).catch(onError)}
+            >
+              {speedPending ? <Loader2 size={13} className="spin" /> : <Zap size={13} />}
+              <span>Fast</span>
+              <span className="fast-state">
+                {initialServiceTier === undefined ? 'CLI' : fast ? t('开', 'On') : t('关', 'Off')}
+              </span>
+            </button>
           </div>
           <div className="composer-send-actions">
             {running && (
@@ -431,7 +493,7 @@ export function Composer({
               : initialApprovalPolicy
           }
           onChange={startup ? startup.onChange : setAccess}
-          disabled={running || sending}
+          disabled={running || sending || speedPending}
         />
         <span>
           {project?.name || t('默认工作区', 'Default workspace')} · Shift + Enter {t('换行', 'for newline')}

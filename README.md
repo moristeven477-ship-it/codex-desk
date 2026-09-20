@@ -23,6 +23,7 @@ _Screenshots show a synthetic test workspace. The application uses your real loc
 - Adjust **Settings → General → Font size** continuously from 12–22 px, with smooth live preview, saving on release and reset. Arrow keys adjust by 0.1 px; Shift + Arrow adjusts by 1 px.
 - Respond to command/file approvals, permission requests, and Codex questions. Pending requests remain accessible across conversations.
 - Choose a model, reasoning effort, and permission mode. Model choices come from your installed Codex.
+- Toggle **Fast** beside the model controls, or use `/fast on`, `/fast off`, and `/fast status`. Availability comes from the CLI; Fast trades increased usage for faster responses. CLI speed settings stay in effect until you explicitly change them in Desk.
 - Paste screenshots and copied images with **Ctrl+V**, or use the native image picker. Preview/remove attachments before sending (8 images per message, 20 MiB each).
 - Choose **CLI defaults / Read only / Standard / YOLO** before starting a conversation.
 - Receive top completion notices and Ubuntu background notifications; click to reopen the finished conversation.
@@ -30,6 +31,7 @@ _Screenshots show a synthetic test workspace. The application uses your real loc
 - Switch between English / 简体中文 and dark / light themes.
 - Start immediately in a default workspace, with drafts saved across restarts.
 - Share one conversation with the real CLI: messages, approvals, settings, and goals use the same local app-server.
+- Keep your messages, steering input and tool activity visible when a task completes, including CLI completion events that contain only a final-answer summary.
 - Automatically prepare a background **Ubuntu Terminal** tab for each conversation you create or select. Reopening the conversation reuses its terminal.
 - Open the complete `/` command menu, graphical goal / plan / status controls, and an embedded real Codex terminal.
 - Use detailed model / effort / permission popovers and an original gradient SVG neon sakura icon.
@@ -54,7 +56,7 @@ If Codex already works in your terminal, keep that installation. Codex Desk disc
 Download the `.deb` from [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest), then run:
 
 ```bash
-sudo apt install ./codex-desk-0.2.5-amd64.deb
+sudo apt install ./codex-desk-0.2.6-amd64.deb
 ```
 
 Launch **Codex Desk** from Ubuntu's application menu, or run `codex-desk`.
@@ -64,14 +66,14 @@ The package includes the Electron runtime; Node.js is needed separately only for
 ### Portable AppImage
 
 ```bash
-chmod +x codex-desk-0.2.5-x86_64.AppImage
-./codex-desk-0.2.5-x86_64.AppImage
+chmod +x codex-desk-0.2.6-x86_64.AppImage
+./codex-desk-0.2.6-x86_64.AppImage
 ```
 
 If FUSE is unavailable, run without mounting the AppImage:
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.5-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.6-x86_64.AppImage
 ```
 
 The `.deb` is recommended on Ubuntu 24.04: its installer includes Electron's Ubuntu AppArmor integration. Do not disable Chromium's sandbox to work around an installation problem. See [Troubleshooting](docs/TROUBLESHOOTING.md).
@@ -127,7 +129,7 @@ The embedded terminal uses Ubuntu's `python3` PTY support and xterm.js. It runs 
 
 ## CLI settings take priority
 
-Existing conversations inherit the CLI's live permissions, approval policy, model, reasoning effort, and plan/default mode. Merely opening a conversation or sending a message does not replace those settings. An explicit selection in Desk changes the corresponding setting for the next turn and is synchronized through Codex.
+Existing conversations inherit the CLI's live permissions, approval policy, model, reasoning effort, Fast service tier, and plan/default mode. Merely opening a conversation or sending a message does not replace those settings. An explicit selection in Desk changes the corresponding setting for the next turn and is synchronized through Codex. Fast changes wait for CLI confirmation, can be made while the conversation is idle, and leave the global CLI configuration unchanged.
 
 New conversations offer these startup modes:
 
@@ -204,7 +206,7 @@ npx tsx scripts/live-sync.ts --turns  # real TUI ↔ Desk messages and goals; us
 
 Terminal and native checks automatically use a private Xvfb display and D-Bus session, without starting user desktop services. The live-turn check archives only the test conversation it creates. No live Codex checks run in CI.
 
-`npm run test:steer` validates the installed Codex CLI with a separate home, server and loopback Responses fixture: bidirectional steering in one turn, settings inheritance and stale/completed-turn rejection. It uses no account or external model request.
+`npm run test:steer` validates the installed Codex CLI with a separate home, server and loopback Responses fixture: bidirectional steering, full user-message retention after summary completion, settings inheritance, Fast toggles and actual request tiers, plus stale/completed-turn rejection. It uses no account or external model request.
 
 ## Design and license
 

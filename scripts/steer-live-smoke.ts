@@ -12,11 +12,12 @@ import { DeskService } from '../electron/service';
 import { CodexProcess } from '../electron/codex';
 import { socketReady } from '../electron/shared-server';
 import type { CodexEvent, Thread, Turn } from '../src/shared/types';
+import { reduceThread } from '../src/lib/events';
 
 const root = await mkdtemp(path.join(tmpdir(), 'desk-real-steer-'));
 const cliHome = path.join(root, 'cli');
 const socket = path.join(cliHome, 'app-server-control/app-server-control.sock');
-const requests: unknown[] = [];
+const requests: Record<string, unknown>[] = [];
 let held: ServerResponse | undefined;
 let sequence = 0;
 function event(response: ServerResponse, type: string, data: object) {
@@ -73,6 +74,9 @@ await writeFile(
 model_provider = "local_fixture"
 approval_policy = "never"
 sandbox_mode = "danger-full-access"
+service_tier = "fast"
+[features]
+fast_mode = true
 [model_providers.local_fixture]
 name = "Local steering validation"
 base_url = "http://127.0.0.1:${address.port}/v1"
@@ -113,6 +117,7 @@ try {
   await desk.connect();
   await cli.start(desk.store.state.settings);
   const thread = (await desk.handle('thread.create', { access: 'danger-full-access' })) as Thread;
+  assert.equal(thread.serviceTier, 'priority', 'new conversations inherit the CLI Fast default');
   await cli.request('thread/resume', { threadId: thread.id });
   const { turn } = await cli.request<{ turn: Turn }>('turn/start', {
     threadId: thread.id,
@@ -150,6 +155,13 @@ try {
   assert.equal(history.turns[0].status, 'completed');
   const users = history.turns[0].items.filter((item) => item.type === 'userMessage');
   assert.equal(users.length, 3);
+  const rendered = events.reduce(reduceThread, { ...thread, turns: [] });
+  assert.equal(rendered.turns[0].items.filter((item) => item.type === 'userMessage').length, 3);
+  assert.deepEqual(
+    rendered.turns[0].items.filter((item) => item.type === 'userMessage').map((item) => item.content),
+    users.map((item) => item.content),
+    'live completion summaries must preserve exactly the same user input as stored history',
+  );
   const sent = JSON.stringify(requests);
   assert.ok(sent.includes('Additional direction from Desk.'));
   assert.ok(sent.includes('Additional direction from the CLI client.'));
@@ -164,6 +176,59 @@ try {
   const opened = (await desk.handle('thread.open', { threadId: thread.id })) as Thread;
   assert.equal(opened.permissionMode, 'danger-full-access');
   assert.equal(opened.approvalPolicy, 'never');
+  assert.equal(opened.serviceTier, 'priority');
+  assert.ok(requests.every((request) => request.service_tier === 'priority'));
+  await desk.handle('thread.speed', { threadId: thread.id, serviceTier: null });
+  const standard = await cli.request<{ serviceTier: string | null; model: string; approvalPolicy: string }>(
+    'thread/resume',
+    { threadId: thread.id, excludeTurns: true },
+  );
+  assert.equal(standard.serviceTier, 'default', 'Desk can turn Fast off for the same CLI thread');
+  assert.equal(standard.model, opened.model);
+  assert.equal(standard.approvalPolicy, 'never');
+  const previousRequests = requests.length;
+  const { turn: standardTurn } = (await desk.handle('turn.start', {
+    threadId: thread.id,
+    text: 'Standard-speed input from Desk.',
+  })) as { turn: Turn };
+  await until(
+    () =>
+      events.some(
+        (event) => event.method === 'turn/completed' && (event.params?.turn as Turn)?.id === standardTurn.id,
+      ),
+    'standard-speed turn did not complete',
+  );
+  assert.ok(requests.length > previousRequests);
+  assert.ok(requests.slice(previousRequests).every((request) => request.service_tier !== 'priority'));
+  await desk.handle('thread.speed', { threadId: thread.id, serviceTier: 'priority' });
+  assert.equal(
+    (
+      await cli.request<{ serviceTier: string | null }>('thread/resume', {
+        threadId: thread.id,
+        excludeTurns: true,
+      })
+    ).serviceTier,
+    'priority',
+  );
+  const checkpoint = events.length;
+  await cli.request('thread/settings/update', { threadId: thread.id, serviceTier: null });
+  await until(
+    () =>
+      events
+        .slice(checkpoint)
+        .some(
+          (event) =>
+            event.method === 'thread/settings/updated' &&
+            (event.params?.threadSettings as { serviceTier?: string | null })?.serviceTier === 'default',
+        ),
+    'CLI Fast update did not synchronize',
+  );
+  assert.equal(
+    ((await desk.handle('thread.open', { threadId: thread.id })) as Thread).serviceTier,
+    'default',
+  );
+  const another = (await desk.handle('thread.create', {})) as Thread;
+  assert.equal(another.serviceTier, 'priority', 'per-thread toggles must not change the CLI default');
   console.log(
     JSON.stringify({
       passed: true,
@@ -174,6 +239,8 @@ try {
       provider: 'loopback synthetic Responses',
       liveSettings: 'YOLO preserved',
       staleAndCompletedSteers: 'rejected',
+      liveUserMessages: 'preserved after the summary completion',
+      fast: 'CLI default inherited; Desk/CLI toggles synchronized; request tiers verified',
     }),
   );
 } finally {

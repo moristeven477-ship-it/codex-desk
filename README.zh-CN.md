@@ -19,12 +19,14 @@ _截图使用测试项目，应用实际连接本机 Codex CLI。_
 - 多个会话分别运行；随时停止当前任务。
 - 在界面中处理命令、文件和权限审批，以及 Codex 的问题。
 - 选择模型、推理强度、权限模式；支持 **Ctrl+V 粘贴截图和复制的图片**，或通过原生文件选择器添加图片。发送前可预览、移除，每条消息最多 8 张，每张不超过 20 MiB。
+- 模型旁新增 **Fast 开关**，也可用 `/fast on`、`/fast off`、`/fast status`。是否可用由 CLI 的模型列表决定；开启后响应更快，额度消耗也更高。默认跟随 CLI，只有你主动切换时才更改。
 - 新会话选择 **跟随 CLI 配置 / 只读 / 标准模式 / YOLO**。
 - 任务完成后显示顶部提醒；后台完成会发送 Ubuntu 系统通知，点击可返回对应会话。
 - 浏览项目文件，查看 Git 暂存、未暂存和未跟踪更改。
 - 中英文切换，深浅色主题，侧栏与文件面板调整。
 - 无须先选项目，直接在默认工作区开始；文字草稿跨重启保存。
 - CLI 与 Desk 共用同一会话，实时同步消息、审批、设置和目标。
+- 任务结束时保留你的消息、插话和工具记录；CLI 只发回最终回复摘要时，也不会覆盖已经显示的完整消息。
 - 任务运行时按 **Enter** 或点击 **插话**，向同一轮任务补充文字和图片；停止按钮独立保留。插话被拒绝时保留输入与附件，继续使用 CLI 当前设置。`/` 命令仍按命令处理。
 - 你的文字消息、Codex 回复和计划下方均有 **复制** 按钮，复制原始文字/Markdown，并显示结果。
 - 在 **设置 → 通用 → 字体大小** 连续拖动滑块（12–22 px），平滑预览、松手自动保存，也可恢复默认。方向键微调 0.1 px，Shift + 方向键调节 1 px。
@@ -52,7 +54,7 @@ codex login
 从 [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest) 下载 `.deb`：
 
 ```bash
-sudo apt install ./codex-desk-0.2.5-amd64.deb
+sudo apt install ./codex-desk-0.2.6-amd64.deb
 ```
 
 安装后在 Ubuntu 应用菜单中打开 **Codex Desk**，或运行 `codex-desk`。
@@ -60,14 +62,14 @@ sudo apt install ./codex-desk-0.2.5-amd64.deb
 也可下载便携 AppImage：
 
 ```bash
-chmod +x codex-desk-0.2.5-x86_64.AppImage
-./codex-desk-0.2.5-x86_64.AppImage
+chmod +x codex-desk-0.2.6-x86_64.AppImage
+./codex-desk-0.2.6-x86_64.AppImage
 ```
 
 没有 FUSE 时：
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.5-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.6-x86_64.AppImage
 ```
 
 Ubuntu 24.04 优先使用 `.deb`，安装器包含 Electron 的 AppArmor 集成。遇到沙箱错误时参考[故障排查](docs/TROUBLESHOOTING.md)，不要通过关闭沙箱解决。
@@ -94,7 +96,7 @@ Ubuntu 24.04 优先使用 `.deb`，安装器包含 Electron 的 AppArmor 集成�
 
 ## CLI 设置优先
 
-已有会话默认继承 CLI 的实时沙箱、审批策略、模型、推理强度和计划模式。打开会话或发送普通消息不会覆盖它们；只有在 Desk 主动选择设置时，才在下一轮应用对应变更，并通过 Codex 同步。
+已有会话默认继承 CLI 的实时沙箱、审批策略、模型、推理强度、Fast 速度档位和计划模式。打开会话或发送普通消息不会覆盖它们；只有在 Desk 主动选择设置时，才在下一轮应用对应变更，并通过 Codex 同步。Fast 可在会话空闲时切换，等待 CLI 确认后生效，不修改 CLI 全局配置。
 
 新会话提供以下启动模式：
 
@@ -180,7 +182,7 @@ npm run package:linux
 
 `npx tsx scripts/live-sync.ts --turns` 验证真实 TUI 与 Desk 的双向消息和目标同步，会使用少量模型额度。
 
-`npm run test:steer` 使用独立目录、服务和本机模拟模型接口验证实际安装的 Codex CLI：同一轮双向插话、继承权限，以及过期/已完成任务拒绝插话。不访问账号或外部模型。
+`npm run test:steer` 使用独立目录、服务和本机模拟模型接口验证实际安装的 Codex CLI：同一轮双向插话、完成摘要后保留用户消息、继承权限、Fast 开关与实际请求档位，以及过期/已完成任务拒绝插话。不访问账号或外部模型。
 
 ## 开源
 

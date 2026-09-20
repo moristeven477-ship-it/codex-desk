@@ -78,6 +78,7 @@ export interface Item {
 export interface Turn {
   id: string;
   items: Item[];
+  itemsView?: 'notLoaded' | 'summary' | 'full';
   status: 'inProgress' | 'completed' | 'interrupted' | 'failed';
   error?: { message: string } | null;
 }
@@ -88,6 +89,7 @@ export interface Thread {
   preview: string;
   cwd: string;
   model?: string | null;
+  serviceTier?: string | null;
   reasoningEffort?: string | null;
   modelProvider?: string;
   source?: unknown;
@@ -113,6 +115,9 @@ export interface Model {
   displayName: string;
   description: string;
   isDefault: boolean;
+  serviceTiers?: { id: string; name: string; description: string }[];
+  additionalSpeedTiers?: string[];
+  defaultServiceTier?: string | null;
   defaultReasoningEffort: string;
   supportedReasoningEfforts: { reasoningEffort: string; description: string }[];
 }

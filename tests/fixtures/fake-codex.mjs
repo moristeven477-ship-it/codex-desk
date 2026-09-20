@@ -71,11 +71,13 @@ const loaded = new Set(['fixture-history']);
 let lastTurnParams;
 let lastSteerParams;
 let settingsDelay = 0;
+let settingsError = '';
 let compactionMode = 'success';
 let compactionItem = true;
 const currentSettings = (thread) =>
   settings.get(thread.id) || {
     model: thread.model || 'test-codex',
+    serviceTier: null,
     effort: 'medium',
     cwd: thread.cwd,
     sandboxPolicy: { type: 'workspaceWrite' },
@@ -116,6 +118,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
             displayName: 'Codex · Test fixture',
             description: 'A capable model for everyday coding tasks.',
             isDefault: true,
+            serviceTiers: [{ id: 'priority', name: 'Fast', description: 'Faster, increased usage' }],
+            additionalSpeedTiers: ['fast'],
             defaultReasoningEffort: 'medium',
             supportedReasoningEfforts: [
               { reasoningEffort: 'medium', description: 'Balanced' },
@@ -128,6 +132,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
             displayName: 'Codex · Fast fixture',
             description: 'Quick answers for small coding tasks.',
             isDefault: false,
+            serviceTiers: [],
+            additionalSpeedTiers: [],
             defaultReasoningEffort: 'low',
             supportedReasoningEfforts: [
               { reasoningEffort: 'low', description: 'Quick' },
@@ -175,7 +181,10 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       reply({ thread });
       break;
     case 'thread/turns/list':
-      reply({ data: [...thread.turns].reverse(), nextCursor: null });
+      reply({
+        data: [...thread.turns].reverse().map((turn) => ({ ...turn, itemsView: 'full' })),
+        nextCursor: null,
+      });
       break;
     case 'thread/resume':
       if (thread.materialized === false)
@@ -200,12 +209,14 @@ createInterface({ input: process.stdin }).on('line', (line) => {
               }[p.sandbox],
             };
           if (p.approvalPolicy) next.approvalPolicy = p.approvalPolicy;
+          if ('serviceTier' in p) next.serviceTier = p.serviceTier;
           settings.set(thread.id, next);
         }
         loaded.add(thread.id);
         reply({
           thread,
           model: currentSettings(thread).model,
+          serviceTier: currentSettings(thread).serviceTier,
           reasoningEffort: currentSettings(thread).effort,
           sandbox: currentSettings(thread).sandboxPolicy,
           approvalPolicy: currentSettings(thread).approvalPolicy,
@@ -215,7 +226,13 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       }
       break;
     case 'thread/settings/update': {
+      if (settingsError) {
+        write({ id: message.id, error: { code: -32000, message: settingsError } });
+        break;
+      }
       const next = { ...currentSettings(thread), ...p };
+      // Current Codex versions canonicalize an explicit clear to standard speed.
+      if (p.serviceTier === null) next.serviceTier = 'default';
       reply({});
       const apply = () => {
         settings.set(thread.id, next);
@@ -313,9 +330,13 @@ createInterface({ input: process.stdin }).on('line', (line) => {
           }[p.sandbox],
         };
       if (p.approvalPolicy) initial.approvalPolicy = p.approvalPolicy;
+      if (p.model) initial.model = p.model;
       settings.set(created.id, initial);
       reply({
         thread: created,
+        model: initial.model,
+        reasoningEffort: initial.effort,
+        serviceTier: initial.serviceTier,
         sandbox: initial.sandboxPolicy,
         approvalPolicy: initial.approvalPolicy,
         approvalsReviewer: initial.approvalsReviewer,
@@ -349,6 +370,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       const next = {
         ...currentSettings(thread),
         model: p.model || currentSettings(thread).model,
+        serviceTier: 'serviceTier' in p ? p.serviceTier : currentSettings(thread).serviceTier,
         effort: p.effort || currentSettings(thread).effort,
         sandboxPolicy: p.sandboxPolicy || currentSettings(thread).sandboxPolicy,
         approvalPolicy: p.approvalPolicy || currentSettings(thread).approvalPolicy,
@@ -423,6 +445,10 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       settingsDelay = p.milliseconds;
       reply({});
       break;
+    case 'test.settingsError':
+      settingsError = p.message || '';
+      reply({});
+      break;
     case 'test.compaction':
       compactionMode = p.mode;
       compactionItem = p.item !== false;
@@ -472,5 +498,6 @@ function finish(thread, turn, text) {
   turn.status = 'completed';
   thread.status = { type: 'idle' };
   thread.updatedAt = Date.now() / 1000;
-  notify('turn/completed', { threadId: thread.id, turn: { ...turn, items: [] } });
+  // Real 0.154+ servers send a summary containing only the final answer.
+  notify('turn/completed', { threadId: thread.id, turn: { ...turn, items: [agent], itemsView: 'summary' } });
 }

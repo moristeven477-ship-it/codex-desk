@@ -60,6 +60,40 @@ test('real Codex outputDelta and summaryTextDelta event names stream correctly',
   assert.deepEqual(state.turns[0].items[1].summary, ['Checking']);
 });
 
+test('summary completion preserves user messages, steers and tools without duplicating the final answer', () => {
+  const user = { id: 'user', type: 'userMessage', content: [{ type: 'text', text: 'Original question' }] };
+  const tool = { id: 'tool', type: 'commandExecution', command: 'pwd', status: 'completed' };
+  const steer = {
+    id: 'steer',
+    type: 'userMessage',
+    content: [{ type: 'text', text: 'Additional direction' }],
+  };
+  const answer = { id: 'answer', type: 'agentMessage', text: 'Finished' };
+  const before: Thread = {
+    ...empty(),
+    turns: [{ id: 't', status: 'inProgress', items: [user, tool, steer, answer] }],
+  };
+  const event: CodexEvent = {
+    kind: 'notification',
+    method: 'turn/completed',
+    params: { threadId: 'a', turn: { id: 't', status: 'completed', items: [answer], itemsView: 'summary' } },
+  };
+  const after = reduceThread(before, event);
+  assert.deepEqual(after.turns[0].items, [user, tool, steer, answer]);
+  assert.equal(after.turns[0].status, 'completed');
+  assert.deepEqual(reduceThread(after, event).turns[0].items, after.turns[0].items);
+  assert.equal(before.turns[0].status, 'inProgress');
+  // An explicitly full snapshot remains authoritative (e.g. history after rollback).
+  const full = reduceThread(after, {
+    ...event,
+    params: {
+      threadId: 'a',
+      turn: { id: 't', status: 'completed', items: [user, answer], itemsView: 'full' },
+    },
+  });
+  assert.deepEqual(full.turns[0].items, [user, answer]);
+});
+
 test('compaction lifecycle uses notifications and terminal turn errors without inventing success', () => {
   const item = { id: 'c', type: 'contextCompaction' };
   const started = reduceThread(empty(), {

@@ -1186,6 +1186,35 @@ kbd {
   background: var(--border-strong);
   margin-right: 5px;
 }
+.fast-toggle {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 5px;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--secondary);
+  font-size: 0.8462rem;
+  background: transparent;
+}
+.fast-toggle.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.fast-toggle:not(:disabled):hover {
+  color: var(--text);
+  background: var(--hover);
+}
+.fast-state {
+  font-size: 0.7692rem;
+  opacity: 0.8;
+}
+.fast-toggle:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
 .select-wrap {
   display: flex;
   align-items: center;

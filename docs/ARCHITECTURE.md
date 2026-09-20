@@ -37,13 +37,17 @@ Application RPC methods are validated and allowlisted. The terminal can start on
 
 ## Protocol strategy
 
-Validated against `codex-cli 0.154.0`. The application uses an intentionally small set of protocol types, not a forked Codex implementation. To inspect a future installation's actual schema:
+Validated against `codex-cli 0.154.0` and `0.155.1`. The application uses an intentionally small set of protocol types, not a forked Codex implementation. To inspect a future installation's actual schema:
 
 ```bash
 codex app-server generate-ts --out /tmp/codex-desk-protocol --experimental
 ```
 
 Initialization opts into experimental capabilities because Codex's interactive question and pagination surfaces can require them. History uses metadata reads and turn pagination, with a legacy full-history fallback for method/parameter incompatibility. Unsupported client requests receive a JSON-RPC error.
+
+Turn history requests `itemsView: full`. Live turn notifications can instead carry `itemsView: summary` (only the final assistant answer) or `notLoaded`. The renderer merges those partial snapshots by item ID so user messages, steering input and tools remain visible. Only explicitly full snapshots replace the item list.
+
+Fast reads `serviceTier` from thread start/resume responses and settings notifications. Its available tier comes from `model/list`, with compatibility for the deprecated `additionalSpeedTiers` field. An explicit toggle sends only `serviceTier` through `thread/settings/update`; the composer waits for both acknowledgement and matching settings notification. Clearing Fast accepts the CLI's normalized `default` value or null. Ordinary sends and steers omit service-tier overrides, and global CLI configuration stays unchanged.
 
 `thread/compact/start` acknowledges submission immediately. Compaction progress and outcome come from `turn/*` and `item/*` events; the `contextCompaction` item itself has no status field, so the renderer derives it from its lifecycle. A failed pre-sampling compaction can have no items: the persisted turn error still renders a localized explanation and the original error details. Remote `content_filter` failures expose feedback and new-conversation guidance; other failures offer an explicit retry. Desk does not change providers, disable filters, erase history, or change CLI settings to recover. Before manual compaction, the service checks live thread status as well as observed turns, since another CLI can start work before Desk subscribes. Compaction is additionally validated with CLI 0.154.0 and 0.155.1 using a loopback provider.
 

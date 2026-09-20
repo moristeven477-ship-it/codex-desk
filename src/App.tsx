@@ -782,6 +782,8 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
             key={desk.compositionKey}
             models={boot.models}
             initialModel={thread?.model}
+            initialServiceTier={thread?.serviceTier}
+            onServiceTier={desk.setServiceTier}
             initialEffort={thread?.reasoningEffort}
             initialAccess={thread?.permissionMode}
             initialApprovalPolicy={thread?.approvalPolicy}

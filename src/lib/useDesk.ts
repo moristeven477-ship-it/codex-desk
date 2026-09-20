@@ -420,6 +420,11 @@ export function useDesk() {
     await request('goal.clear', { threadId });
     setCache((old) => ({ ...old, [threadId]: { ...old[threadId], goal: null } }));
   }
+  async function setServiceTier(serviceTier: string | null) {
+    const id = await ensureThread();
+    await modeUpdate.current;
+    await request('thread.speed', { threadId: id, serviceTier });
+  }
   async function send(
     text: string,
     model: string,
@@ -569,6 +574,7 @@ export function useDesk() {
     dismissCompletion,
     startupAccess,
     setStartupAccess,
+    setServiceTier,
     boot,
     projectId,
     threadId,

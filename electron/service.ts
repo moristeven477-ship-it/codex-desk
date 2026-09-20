@@ -14,6 +14,7 @@ import { APP_VERSION } from '../src/shared/version';
 import { isWriterConflict } from '../src/shared/errors';
 import { permissionOverride, threadPermissions } from '../src/shared/permissions';
 import { storedThreadContext } from './thread-context';
+import { isFastTier } from '../src/shared/speed';
 
 const text = z.string().min(1).max(4096);
 const threadArgs = z.object({ threadId: text });
@@ -72,7 +73,9 @@ export class DeskService extends EventEmitter {
       if (event.method === 'thread/settings/updated') {
         const settings = event.params.threadSettings;
         this.runtime.set(event.params.threadId, {
+          ...this.runtime.get(event.params.threadId),
           model: settings.model,
+          ...(settings.serviceTier !== undefined ? { serviceTier: settings.serviceTier } : {}),
           reasoningEffort: settings.effort,
           collaborationMode: settings.collaborationMode?.mode,
           ...threadPermissions(settings),
@@ -143,6 +146,7 @@ export class DeskService extends EventEmitter {
       const result = await this.codex.request<{
         thread: Thread;
         model?: string;
+        serviceTier?: string | null;
         reasoningEffort?: string;
         sandbox?: { type: string };
         approvalPolicy?: Thread['approvalPolicy'];
@@ -152,6 +156,7 @@ export class DeskService extends EventEmitter {
       this.runtime.set(threadId, {
         ...this.runtime.get(threadId),
         ...(result.model ? { model: result.model } : {}),
+        ...(result.serviceTier !== undefined ? { serviceTier: result.serviceTier } : {}),
         ...(result.reasoningEffort ? { reasoningEffort: result.reasoningEffort } : {}),
         ...threadPermissions(result),
       });
@@ -166,6 +171,50 @@ export class DeskService extends EventEmitter {
   }
   get defaultWorkspace() {
     return this.store.state.settings.defaultWorkspace || path.join(homedir(), 'Codex', 'workspace');
+  }
+  private updateThreadSettings(
+    threadId: string,
+    overrides: JsonObject,
+    matches: (settings: JsonObject) => boolean,
+    timeoutMessage: string,
+  ) {
+    // The response only acknowledges queueing. Use the actual settings event
+    // before enabling another send, and never invent an optimistic CLI setting.
+    return new Promise<void>((resolve, reject) => {
+      let acknowledged = false,
+        applied = false;
+      const cleanup = () => {
+        clearTimeout(timer);
+        this.codex.off('event', receive);
+      };
+      const finish = () => {
+        if (acknowledged && applied) {
+          cleanup();
+          resolve();
+        }
+      };
+      const receive = (event: CodexEvent) => {
+        if (event.method !== 'thread/settings/updated' || event.params?.threadId !== threadId) return;
+        if (!matches(event.params.threadSettings as JsonObject)) return;
+        applied = true;
+        finish();
+      };
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new Error(timeoutMessage));
+      }, 10_000);
+      this.codex.on('event', receive);
+      void this.codex
+        .request('thread/settings/update', { threadId, ...overrides })
+        .then(() => {
+          acknowledged = true;
+          finish();
+        })
+        .catch((error) => {
+          cleanup();
+          reject(error);
+        });
+    });
   }
   private async history(threadId: string): Promise<Thread> {
     const { thread } = await this.codex.request<{ thread: Thread }>('thread/read', {
@@ -422,8 +471,9 @@ export class DeskService extends EventEmitter {
         const { thread } = result;
         this.runtime.set(thread.id, {
           ...threadPermissions(result),
-          model: thread.model,
-          reasoningEffort: thread.reasoningEffort,
+          model: (result.model as string | undefined) ?? thread.model,
+          reasoningEffort: (result.reasoningEffort as string | undefined) ?? thread.reasoningEffort,
+          ...(result.serviceTier !== undefined ? { serviceTier: result.serviceTier as string | null } : {}),
         });
         this.loaded.add(thread.id);
         this.pristine.add(thread.id);
@@ -450,49 +500,36 @@ export class DeskService extends EventEmitter {
         if (this.activeTurns.has(args.threadId))
           throw new Error('Wait for the running turn before changing startup mode.');
         const overrides = permissionOverride(args.access);
-        // The official response only acknowledges queueing. Wait for the actual
-        // settings notification before letting a first message/goal use the mode.
-        return new Promise((resolve, reject) => {
-          let acknowledged = false,
-            applied = false;
-          const cleanup = () => {
-            clearTimeout(timer);
-            this.codex.off('event', receive);
-          };
-          const finish = () => {
-            if (acknowledged && applied) {
-              cleanup();
-              resolve({});
-            }
-          };
-          const receive = (event: CodexEvent) => {
-            if (event.method !== 'thread/settings/updated' || event.params?.threadId !== args.threadId)
-              return;
-            const settings = threadPermissions(event.params.threadSettings as JsonObject);
-            if (
-              settings.permissionMode !== args.access ||
-              settings.approvalPolicy !== overrides.approvalPolicy
-            )
-              return;
-            applied = true;
-            finish();
-          };
-          const timer = setTimeout(() => {
-            cleanup();
-            reject(new Error('Codex has not confirmed the startup mode. Try selecting it again.'));
-          }, 10_000);
-          this.codex.on('event', receive);
-          void this.codex
-            .request('thread/settings/update', { threadId: args.threadId, ...overrides })
-            .then(() => {
-              acknowledged = true;
-              finish();
-            })
-            .catch((error) => {
-              cleanup();
-              reject(error);
-            });
-        });
+        await this.updateThreadSettings(
+          args.threadId,
+          overrides,
+          (incoming) => {
+            const settings = threadPermissions(incoming);
+            return (
+              settings.permissionMode === args.access && settings.approvalPolicy === overrides.approvalPolicy
+            );
+          },
+          'Codex has not confirmed the startup mode. Try selecting it again.',
+        );
+        return {};
+      }
+      case 'thread.speed': {
+        const args = z
+          .object({ threadId: text, serviceTier: z.enum(['priority', 'fast']).nullable() })
+          .parse(params);
+        await this.resume(args.threadId);
+        if (this.activeTurns.has(args.threadId))
+          throw new Error('Wait for the running turn before changing Fast mode.');
+        await this.updateThreadSettings(
+          args.threadId,
+          { serviceTier: args.serviceTier },
+          (settings) =>
+            args.serviceTier === null
+              ? settings.serviceTier === null || settings.serviceTier === 'default'
+              : isFastTier(settings.serviceTier as string | null | undefined),
+          'Codex has not confirmed Fast mode. Try selecting it again.',
+        );
+        return {};
       }
       case 'thread.archive': {
         const args = threadArgs.parse(params);

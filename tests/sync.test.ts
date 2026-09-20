@@ -367,3 +367,63 @@ test('startup mode waits for Codex to apply queued settings before returning', a
     await f.close();
   }
 });
+
+test('Fast inherits CLI state and only explicit changes update the shared service tier', async () => {
+  const f = await fixture();
+  try {
+    const threadId = 'fixture-history';
+    const changed = eventWhere(f.desk, (event) => event.method === 'thread/settings/updated');
+    await f.cli.request('thread/settings/update', {
+      threadId,
+      serviceTier: 'priority',
+      sandboxPolicy: { type: 'dangerFullAccess' },
+      approvalPolicy: 'never',
+      effort: 'high',
+    });
+    await changed;
+    const opened = (await f.desk.handle('thread.open', { threadId })) as Thread;
+    assert.equal(opened.serviceTier, 'priority');
+    const before = await f.cli.request<Record<string, unknown>>('test.settings', { threadId });
+    const completed = eventWhere(f.cli, (event) => event.method === 'turn/completed');
+    await f.desk.handle('turn.start', { threadId, text: 'Inherit Fast from CLI' });
+    await completed;
+    const sent = await f.cli.request<Record<string, unknown>>('test.lastTurn');
+    for (const field of [
+      'serviceTier',
+      'serviceTierForTurn',
+      'model',
+      'effort',
+      'approvalPolicy',
+      'sandboxPolicy',
+    ])
+      assert.ok(!(field in sent), `Ordinary sends must omit ${field}`);
+    assert.deepEqual(await f.cli.request('test.settings', { threadId }), before);
+
+    await f.cli.request('test.settingsDelay', { milliseconds: 150 });
+    let finished = false;
+    const off = f.desk.handle('thread.speed', { threadId, serviceTier: null }).then(() => {
+      finished = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(finished, false, 'must wait for CLI settings confirmation');
+    await off;
+    assert.deepEqual(await f.cli.request('test.settings', { threadId }), {
+      ...before,
+      serviceTier: 'default',
+    });
+    assert.equal(((await f.desk.handle('thread.open', { threadId })) as Thread).serviceTier, 'default');
+    await f.desk.handle('thread.speed', { threadId, serviceTier: 'priority' });
+    assert.deepEqual(await f.cli.request('test.settings', { threadId }), before);
+    await f.cli.request('test.settingsError', { message: 'Fast unavailable' });
+    await assert.rejects(f.desk.handle('thread.speed', { threadId, serviceTier: null }), /Fast unavailable/);
+    assert.equal(((await f.desk.handle('thread.open', { threadId })) as Thread).serviceTier, 'priority');
+    await f.cli.request('test.settingsError', { message: '' });
+    await f.cli.request('turn/start', { threadId, input: [{ type: 'text', text: 'wait' }] });
+    await assert.rejects(
+      f.desk.handle('thread.speed', { threadId, serviceTier: null }),
+      /Wait for the running turn/,
+    );
+  } finally {
+    await f.close();
+  }
+});

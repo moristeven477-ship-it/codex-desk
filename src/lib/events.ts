@@ -1,6 +1,19 @@
 import type { CodexEvent, Item, Thread, Turn } from '../shared/types';
 import { threadPermissions } from '../shared/permissions';
 
+function turnItems(previous: Item[], incoming: Turn): Item[] {
+  if (incoming.itemsView === 'full') return incoming.items ?? [];
+  // turn/completed normally carries only the final answer (itemsView: summary).
+  // Keep the user messages, steers and tool activity already received live.
+  const items = [...previous];
+  for (const item of incoming.items ?? []) {
+    const index = items.findIndex((known) => known.id === item.id);
+    if (index < 0) items.push(item);
+    else items[index] = { ...items[index], ...item };
+  }
+  return items;
+}
+
 export function reduceThread(thread: Thread, event: CodexEvent): Thread {
   const p = event.params;
   if (!p || p.threadId !== thread.id) return thread;
@@ -12,6 +25,7 @@ export function reduceThread(thread: Thread, event: CodexEvent): Thread {
   if (event.method === 'thread/settings/updated') {
     const settings = p.threadSettings as {
       model: string;
+      serviceTier?: string | null;
       effort: string | null;
       cwd: string;
       sandboxPolicy: { type: string };
@@ -20,6 +34,7 @@ export function reduceThread(thread: Thread, event: CodexEvent): Thread {
     return {
       ...thread,
       model: settings.model,
+      ...(settings.serviceTier !== undefined ? { serviceTier: settings.serviceTier } : {}),
       reasoningEffort: settings.effort,
       cwd: settings.cwd,
       collaborationMode: settings.collaborationMode?.mode,
@@ -35,7 +50,7 @@ export function reduceThread(thread: Thread, event: CodexEvent): Thread {
       turns[existing] = {
         ...turns[existing],
         ...turn,
-        items: turn.items?.length ? turn.items : turns[existing].items,
+        items: turnItems(turns[existing].items, turn),
       };
     const updated = turns[existing < 0 ? turns.length - 1 : existing];
     if (event.method === 'turn/completed') {

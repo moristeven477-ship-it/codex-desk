@@ -108,6 +108,9 @@ try {
   await expect(composer).toHaveValue('Native IPC smoke test');
   await page.getByRole('radio', { name: /YOLO/ }).check();
   await expect(page.locator('.image-attachments img')).toHaveCount(1);
+  const fast = page.getByRole('button', { name: 'Fast mode', exact: true });
+  await fast.click();
+  await expect(fast).toHaveAttribute('aria-pressed', 'true');
   if (process.env.DESK_TEST_CLIPBOARD === '1') {
     await desktop.evaluate(async ({ clipboard }) => {
       await clipboard.writeText(' + pasted text');
@@ -119,6 +122,7 @@ try {
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(page.locator('.markdown')).toContainText('Your local Codex conversation is working.');
   await expect(page.locator('.completion-toast')).toContainText('Task completed');
+  await expect(fast).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('combobox', { name: 'Permission mode', exact: true })).toContainText('YOLO');
   await page.locator('.user-message').getByRole('button', { name: 'Copy message', exact: true }).click();
   expect(await desktop.evaluate(({ clipboard }) => clipboard.readText())).toBe(

@@ -14,6 +14,7 @@ export const slashCommands: SlashCommand[] = [
   { name: 'plan', zh: '切换计划模式', en: 'Plan mode', native: true },
   { name: 'status', zh: '会话状态', en: 'Session status', native: true },
   { name: 'model', zh: '模型与推理强度', en: 'Model and reasoning', native: true },
+  { name: 'fast', zh: 'Fast 模式：on / off / status', en: 'Fast mode: on / off / status', native: true },
   { name: 'permissions', zh: '权限设置', en: 'Permissions', native: true },
   { name: 'new', zh: '新建会话', en: 'New conversation', native: true },
   { name: 'resume', zh: '继续历史会话', en: 'Resume a conversation', native: true },

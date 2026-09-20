@@ -372,6 +372,86 @@ test('first message starts in the default workspace and drafts survive reload', 
   await expect(composer).toHaveValue('');
 });
 
+test('Fast follows CLI changes, uses confirmed shared settings and supports slash controls', async ({
+  page,
+  setup,
+}) => {
+  await expect(page.locator('.background-terminal-status')).toContainText('终端已在后台打开');
+  const threadId = setup.store.state.settings.lastThreadId;
+  const fast = page.getByRole('button', { name: 'Fast 模式', exact: true });
+  await expect(fast).toHaveAttribute('aria-pressed', 'false');
+  await setup.codex.request('thread/settings/update', {
+    threadId,
+    serviceTier: 'priority',
+    sandboxPolicy: { type: 'dangerFullAccess' },
+    approvalPolicy: 'never',
+  });
+  await expect(fast).toHaveAttribute('aria-pressed', 'true');
+  await setup.codex.request('test.settingsDelay', { milliseconds: 350 });
+  const composer = page.getByRole('textbox', { name: '发送给 Codex 的消息' });
+  await composer.fill('Keep my draft while changing speed');
+  await fast.click();
+  await expect(fast).toHaveAttribute('aria-busy', 'true');
+  await expect(page.getByRole('button', { name: '发送消息', exact: true })).toBeDisabled();
+  await expect(fast).toHaveAttribute('aria-pressed', 'false');
+  await expect(fast).toHaveAttribute('aria-busy', 'false');
+  await expect(composer).toHaveValue('Keep my draft while changing speed');
+  await expect(page.getByRole('combobox', { name: '权限模式', exact: true })).toContainText('YOLO');
+  await composer.fill('/fast on');
+  await composer.press('Enter');
+  await expect(fast).toHaveAttribute('aria-pressed', 'true');
+  await expect(composer).toHaveValue('');
+  await composer.fill('/fast status');
+  await composer.press('Enter');
+  await expect(page.locator('.session-status')).toContainText('已开启');
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await composer.fill('Fast preserves the CLI configuration');
+  await composer.press('Enter');
+  await expect(page.locator('.completion-toast')).toBeVisible();
+  expect(await setup.codex.request('test.lastTurn')).not.toHaveProperty('serviceTier');
+  await page.reload();
+  await expect(fast).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.user-message')).toContainText('Fast preserves the CLI configuration');
+  await setup.codex.request('test.settingsError', { message: 'Fast fixture rejected this change' });
+  await fast.click();
+  await expect(page.getByRole('alert')).toContainText('Fast fixture rejected');
+  await expect(fast).toHaveAttribute('aria-pressed', 'true');
+  await setup.codex.request('test.settingsError', { message: '' });
+  await composer.fill('/fast off');
+  await composer.press('Enter');
+  await expect(fast).toHaveAttribute('aria-pressed', 'false');
+  await setup.codex.request('thread/settings/update', { threadId, model: 'test-fast' });
+  await expect(fast).toBeDisabled();
+  await expect(fast).toHaveAttribute('title', '当前模型未提供 Fast 模式');
+});
+
+test('completed summaries keep messages from Desk and CLI visible after navigation and reload', async ({
+  page,
+  setup,
+}) => {
+  await page.getByRole('button', { name: /Understand the project/ }).click();
+  const users = page.locator('.user-message .user-text');
+  await expect(users).toHaveText(['Explain this project.']);
+  const composer = page.getByRole('textbox', { name: '发送给 Codex 的消息' });
+  await composer.fill('A previous message from Desk');
+  await composer.press('Enter');
+  await expect(page.locator('.completion-toast')).toBeVisible();
+  await expect(users).toHaveText(['Explain this project.', 'A previous message from Desk']);
+  await setup.codex.request('turn/start', {
+    threadId: 'fixture-history',
+    input: [{ type: 'text', text: 'A previous message from CLI' }],
+  });
+  await expect(page.locator('.markdown')).toHaveCount(3);
+  const expected = ['Explain this project.', 'A previous message from Desk', 'A previous message from CLI'];
+  await expect(users).toHaveText(expected);
+  await page.reload();
+  await expect(users).toHaveText(expected);
+  await page.locator('.new-conversation').click();
+  await page.getByRole('button', { name: /Understand the project/ }).click();
+  await expect(users).toHaveText(expected);
+  await expect(page.locator('.assistant-message')).toHaveCount(3);
+});
+
 test('opening conversations prepares terminals before the first turn and preserves CLI startup changes', async ({
   page,
   setup,

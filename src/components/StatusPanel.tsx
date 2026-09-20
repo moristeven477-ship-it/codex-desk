@@ -1,6 +1,7 @@
 import { Dialog } from './Dialog';
 import { useT } from '../lib/i18n';
 import type { Bootstrap, Thread } from '../shared/types';
+import { isFastTier } from '../shared/speed';
 
 export function StatusPanel({
   boot,
@@ -20,6 +21,14 @@ export function StatusPanel({
     [t('工作目录', 'Working directory'), thread?.cwd || boot.defaultWorkspace],
     [t('模型', 'Model'), thread?.model || boot.models.find((model) => model.isDefault)?.displayName || '—'],
     [t('推理强度', 'Reasoning effort'), thread?.reasoningEffort || '—'],
+    [
+      t('Fast 模式', 'Fast mode'),
+      thread?.serviceTier === undefined
+        ? t('跟随 CLI', 'Follow CLI')
+        : isFastTier(thread.serviceTier)
+          ? t('已开启', 'On')
+          : t('已关闭', 'Off'),
+    ],
     [t('权限', 'Permissions'), thread?.permissionMode || t('跟随 CLI', 'Follow CLI')],
     [
       t('审批策略', 'Approval policy'),

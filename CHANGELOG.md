@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.6
+
+- Add a Fast toggle beside the model/effort controls, plus native `/fast on`, `/fast off` and `/fast status`. Use the installed CLI's advertised service tiers, show increased usage in the tooltip, and wait for the CLI to confirm changes. Fast remains a per-conversation setting; ordinary sends inherit CLI state and leave the model, permissions and global configuration alone.
+- Preserve user messages, steering input and tool activity when a turn completes. Current Codex servers send an `itemsView: summary` completion containing only the final answer; merge that summary by item ID instead of replacing the full conversation turn. Full history snapshots remain authoritative.
+- Verify both fixes with Codex CLI 0.154.0 and 0.155.1 against an isolated local provider, including actual request tiers, shared settings, CLI defaults, unchanged YOLO permissions and matching live/persisted user messages.
+
 ## 0.2.5
 
 - Show context compaction progress, completion, failure and interruption from the official CLI events. A successful start acknowledgement is not treated as a completed compaction.
