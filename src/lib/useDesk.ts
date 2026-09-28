@@ -71,6 +71,7 @@ export function useDesk() {
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [remoteOnline, setRemoteOnline] = useState(!window.codexDesk?.remote);
   const [sending, setSending] = useState(false);
   const [archived, setArchived] = useState(false);
   const [search, setSearch] = useState('');
@@ -86,6 +87,7 @@ export function useDesk() {
   const settingsRevision = useRef(0);
   const fail = useCallback((e: unknown) => setError(e instanceof Error ? e.message : String(e)), []);
   const prepareTerminal = useCallback((thread: Thread) => {
+    if (window.codexDesk?.remote) return;
     if (thread.syncState === 'external') {
       setNativeTerminals((old) => ({ ...old, [thread.id]: { state: 'waiting' } }));
       return;
@@ -177,6 +179,22 @@ export function useDesk() {
       if (event.kind === 'navigate' && event.threadId) void openThread(event.threadId);
       const done = completions.current.receive(event);
       if (done) setCompletion(done);
+      if (event.kind === 'remote') {
+        setRemoteOnline(!!event.online);
+        // A mobile network outage does not interrupt the computer's task.
+        // Hydrate authoritative history after reconnect, buffering live events as usual.
+        if (event.online)
+          void request<Bootstrap>('bootstrap')
+            .then((data) => {
+              if (disposed) return;
+              setBoot(data);
+              setApprovals(data.approvals);
+              void refresh();
+              if (current.current.threadId) void openThread(current.current.threadId, true);
+            })
+            .catch(fail);
+        return;
+      }
       if (event.kind === 'connection' && event.connection) {
         setBoot((old) => ({ ...old, connection: event.connection! }));
         if (event.connection.phase !== 'ready') {
@@ -612,6 +630,7 @@ export function useDesk() {
     threadId,
     thread: cache[threadId],
     pendingSteers: pendingSteers.filter((entry) => entry.threadId === threadId),
+    remoteOnline,
     steersSaved,
     dismissSteer: (clientId: string) =>
       updateSteers((entries) => entries.filter((entry) => entry.clientId !== clientId)),

@@ -13,3 +13,10 @@ playwright-report/
 coverage/
 .local/
 __pycache__/
+android/.gradle/
+android/**/build/
+android/local.properties
+*.jks
+*.keystore
+*.p12
+*.apk

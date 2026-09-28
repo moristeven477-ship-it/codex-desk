@@ -1,27 +1,30 @@
-# Release validation — 0.2.7
+# Release validation — 0.3.0
 
-Validated on Ubuntu 24.04.4 x86-64 (X11), Node.js 22.23.2 and Electron 44.3.0 on 2026-09-19.
+Validated on Ubuntu 24.04.4 x86-64 (X11), Node.js 22.23.2 and Electron 44.3.0 on 2026-09-28.
 
 ## Checks
 
-| Check                                       | Result / coverage                                                                                                                                                                                                                        |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Formatting, TypeScript and production build | Passed                                                                                                                                                                                                                                   |
-| Unit / protocol integration                 | 23 tests passed; receipt correlation, uncertain delivery, summary merging, settings inheritance, shared clients and permissions                                                                                                          |
-| Browser workflows                           | 24 tests passed; pending steering text/images, delayed acknowledgement/consumption, duplicate text with distinct IDs, reload/navigation, interruption, bilingual copy/status and viewport visibility                                     |
-| Unmodified Codex CLI                        | 0.154.0 and 0.155.1 passed isolated loopback Responses checks: acknowledgement before consumption, official client IDs in events/persisted history, one shared turn, unchanged YOLO and Fast synchronization                             |
-| Packaged AppImage                           | Passed: visible pending content through native IPC, reload persistence, native clipboard copy, exactly one visible message after delivery; existing image/clipboard, compaction, goal, font, notification and background terminal checks |
-| Ubuntu artifacts                            | AppImage executed; .deb version/architecture checked; .deb and tested application source bundles match; SHA-256 checksums generated                                                                                                      |
+| Check                                       | Result / coverage                                                                                                                                                                                                                                                             |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Formatting, TypeScript and production build | Passed                                                                                                                                                                                                                                                                        |
+| Unit / protocol integration                 | 25 passed; includes pairing authentication, Origin restrictions, one-use codes, private token hashes, revocation, RPC deduplication, device preferences, same-thread steering, CLI permissions, gateway restart without cancelling work                                       |
+| Existing desktop workflows                  | 24 passed; model/Fast, permissions, history, compaction, copy, images, steering, goals, approval, notifications and background terminal regressions                                                                                                                           |
+| Phone browser workflows                     | 3 passed at 393 × 851 and 360 × 460; pairing, sends, independent preferences, drawer navigation, real CLI panel, image upload, approvals/goals, revocation, visible steering and network recovery without prompt replay                                                       |
+| Unmodified Codex CLI                        | 0.157.1 passed isolated loopback Responses checks: official steering IDs/history, preserved YOLO, shared Fast settings, no loss after completion                                                                                                                              |
+| Packaged Ubuntu AppImage                    | Passed: existing native clipboard, images, font, goal, compaction, steering, notifications and background-terminal checks; plus local settings pairing, phone image normalization/private storage, completed phone turn while desktop window is closed, and device revocation |
+| Android build and artifacts                 | 2 endpoint unit tests passed; release lint completed without errors; release APK assembled, aligned and signature-verified. SHA-256 checksums accompany APK, AppImage and .deb. Ubuntu package source bundles match.                                                          |
 
-## Steering behavior
+The desktop regression server uses a dedicated strict port, never an unrelated existing Vite server. Native checks run on a separate Xvfb display and D-Bus session; real CLI checks use temporary workspaces and CODEX_HOME. They do not interact with existing coding sessions.
 
-The real CLI can acknowledge `turn/steer` before it emits a user-message item. The local provider holds a model response to reproduce that interval. Desk immediately keeps a visible local receipt above the composer and sends a unique `clientUserMessageId`. An official user message with the matching `clientId` replaces the pending display, including when the notification arrives before the request acknowledgement. Identical text is never used to correlate messages.
+## Remote behavior and limits
 
-Only text and attachment paths are saved locally. Switching conversations or reopening the window restores pending receipts; they are never automatically resent. A request error, interrupted/completed turn without receipt, or reload during submission keeps the content with an unconfirmed status. A later official receipt remains authoritative. Hiding an uncertain notice only removes the local display; it does not withdraw input from Codex.
+The phone talks to the same `DeskService` as Electron. It preserves thread IDs and inherits Codex settings unless explicitly changed. A network loss disconnects the phone, not Codex; reconnect refreshes history and pending approvals. HTTP prompts and steering are never automatically replayed. Device revocation closes its WebSocket and owned embedded terminals while keeping shared Codex tasks alive.
 
-The browser tests assert viewport visibility after scrolling up, submitting steering, delayed receipt and reopening a long conversation. The native test exercises the packaged AppImage, reloads while delivery is deferred, copies the pending text through the native clipboard, then verifies one official visible message. The screenshot below contains synthetic test data only.
+Phone tests use real HTTP/WS transport and synthetic official-protocol fixtures. The native test adds Electron's actual image decoder and packaged service. Android endpoint unit tests cover normalization, origin matching and rejection of unsafe addresses. Browser viewport tests exercise touch layout but do not certify a physical Android device.
 
-![Pending steering in the Ubuntu AppImage](screenshots/steering-pending.png)
+No physical Android phone was attached during validation. End-to-end routing through a signed-in Tailscale tailnet and Wi-Fi/cellular handover on a real handset require the user's device/account. The computer's private userspace Tailscale daemon is installed; account login remains separate from local gateway validation. Android background push notifications are not implemented.
+
+![Phone controlling the packaged Ubuntu application — synthetic workspace](screenshots/android-phone.png)
 
 ## Reproduce
 
@@ -31,19 +34,16 @@ npm run format:check
 npm run typecheck
 npm test
 npm run test:e2e
+npm run test:remote
 npm run test:steer
 npm run package:linux
 APPIMAGE_EXTRACT_AND_RUN=1 DESK_TEST_CLIPBOARD=1 DESK_TEST_NO_SANDBOX=1 \
-  DESK_EXECUTABLE="$PWD/release/codex-desk-0.2.7-x86_64.AppImage" \
+  DESK_EXECUTABLE="$PWD/release/codex-desk-0.3.0-x86_64.AppImage" \
   npm run test:native
+cd android
+./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
 ```
 
-`test:steer` uses the installed CLI with a temporary workspace, CODEX_HOME and loopback Responses provider. `DESK_LIVE_BINARY` selects an executable. It uses no account, external model request or user conversation. Both 0.154.0 and 0.155.1 were exercised. Test cleanup reaps only its own isolated server process group.
+`DESK_TEST_NO_SANDBOX` only selects the command-line workaround for the isolated Xvfb test environment; renderer isolation remains asserted. Normal installation instructions do not disable Chromium's sandbox.
 
-## Limits and unchanged protocol behavior
-
-A pending receipt records what Desk submitted; it does not promise that the model has consumed it. Receipt requires an official CLI message with its client ID. Inputs submitted by other clients become visible when the shared server emits them or history is read. Desk does not have a separate copy of another client's unsent input.
-
-Steering uses the current CLI turn and omits model, effort, permission and service-tier overrides. Conversation IDs and stored history remain authoritative. Summary completion merging and confirmed Fast settings are covered in [the 0.2.6 validation](VALIDATION-0.2.6.md).
-
-The native run uses a private Xvfb display and D-Bus session, with the Chromium OS sandbox disabled for the isolated test environment. Context isolation, disabled Node integration and the renderer sandbox preference are checked; OS sandbox enforcement is not validated. Prerequisites are in [the 0.2.4 validation](VALIDATION-0.2.4.md).
+Earlier release validation: [0.2.7](VALIDATION-0.2.7.md).

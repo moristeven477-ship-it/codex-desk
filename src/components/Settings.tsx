@@ -10,12 +10,14 @@ import {
   Sun,
   Moon,
   LogIn,
+  Smartphone,
 } from 'lucide-react';
 import type { Bootstrap, Settings as Preferences } from '../shared/types';
 import { Dialog } from './Dialog';
 import { useT } from '../lib/i18n';
 import { request } from '../lib/useDesk';
 import { FontSizeControl } from './FontSizeControl';
+import { RemoteSettings } from './RemoteSettings';
 
 export function Settings({
   boot,
@@ -33,6 +35,7 @@ export function Settings({
   const t = useT(),
     [binary, setBinary] = useState(boot.settings.binaryPath),
     [home, setHome] = useState(boot.settings.codexHome);
+  const remote = !!window.codexDesk?.remote;
   const [workspace, setWorkspace] = useState(boot.settings.defaultWorkspace);
   const [busy, setBusy] = useState(false),
     [saved, setSaved] = useState(false),
@@ -69,21 +72,36 @@ export function Settings({
             <Monitor size={16} />
             {t('通用', 'General')}
           </button>
-          <button className={tab === 'codex' ? 'active' : ''} onClick={() => setTab('codex')}>
-            <Terminal size={16} />
-            Codex CLI
-          </button>
+          {!remote && (
+            <button className={tab === 'codex' ? 'active' : ''} onClick={() => setTab('codex')}>
+              <Terminal size={16} />
+              Codex CLI
+            </button>
+          )}
+          {!remote && (
+            <button className={tab === 'remote' ? 'active' : ''} onClick={() => setTab('remote')}>
+              <Smartphone size={16} />
+              {t('手机连接', 'Phone access')}
+            </button>
+          )}
           <div className="settings-version">
             Codex Desk
             <br />v{boot.appVersion} · MIT
           </div>
         </nav>
         <div className="settings-content">
-          {tab === 'general' ? (
+          {tab === 'remote' ? (
+            <RemoteSettings onError={onError} />
+          ) : tab === 'general' ? (
             <>
               <h3>{t('让这里更适合你', 'Make yourself at home')}</h3>
               <p className="muted">
-                {t('界面偏好保存在这台电脑上。', 'Your preferences stay on this computer.')}
+                {remote
+                  ? t(
+                      '手机与电脑各自保留界面偏好，Codex 任务在电脑执行。',
+                      'Phone preferences are independent. Codex runs on your computer.',
+                    )
+                  : t('界面偏好保存在这台电脑上。', 'Your preferences stay on this computer.')}
               </p>
               <div className="setting-row">
                 <div>
@@ -146,24 +164,47 @@ export function Settings({
                   </button>
                 </div>
               </div>
-              <label className="field-label default-workspace-setting">
-                {t('默认工作区', 'Default workspace')}
-                <input
-                  value={workspace}
-                  placeholder={boot.defaultWorkspace}
-                  onChange={(event) => setWorkspace(event.target.value)}
-                  onBlur={() => {
-                    if (workspace.trim() !== boot.settings.defaultWorkspace)
-                      void onSave({ defaultWorkspace: workspace.trim() }).catch(onError);
+              {!remote && (
+                <>
+                  <label className="field-label default-workspace-setting">
+                    {t('默认工作区', 'Default workspace')}
+                    <input
+                      value={workspace}
+                      placeholder={boot.defaultWorkspace}
+                      onChange={(event) => setWorkspace(event.target.value)}
+                      onBlur={() => {
+                        if (workspace.trim() !== boot.settings.defaultWorkspace)
+                          void onSave({ defaultWorkspace: workspace.trim() }).catch(onError);
+                      }}
+                    />
+                  </label>
+                  <p className="settings-help">
+                    {t(
+                      '未选择项目的新会话会在这里开始。留空使用 ~/Codex/workspace。',
+                      'New conversations without a selected project start here. Leave blank for ~/Codex/workspace.',
+                    )}
+                  </p>
+                </>
+              )}
+              {remote && (
+                <button
+                  className="secondary-button"
+                  onClick={() => {
+                    void fetch('/v1/logout', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: '{}',
+                    })
+                      .then((response) => {
+                        if (!response.ok) throw new Error('Could not unpair this device.');
+                        window.dispatchEvent(new Event('desk:pair-required'));
+                      })
+                      .catch(onError);
                   }}
-                />
-              </label>
-              <p className="settings-help">
-                {t(
-                  '未选择项目的新会话会在这里开始。留空使用 ~/Codex/workspace。',
-                  'New conversations without a selected project start here. Leave blank for ~/Codex/workspace.',
-                )}
-              </p>
+                >
+                  {t('退出并取消此设备配对', 'Sign out and unpair this device')}
+                </button>
+              )}
             </>
           ) : (
             <>

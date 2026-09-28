@@ -1,0 +1,22 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'io.github.codexdesk.android'
+    compileSdk 36
+    buildFeatures { buildConfig true }
+    defaultConfig {
+        applicationId 'io.github.codexdesk.android'
+        minSdk 26
+        targetSdk 36
+        versionCode 300
+        versionName '0.3.0'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    buildTypes {
+        release { minifyEnabled false }
+    }
+    lint { abortOnError true }
+}
+dependencies { testImplementation 'junit:junit:4.13.2' }

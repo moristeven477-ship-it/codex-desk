@@ -8,6 +8,7 @@ import {
   shell,
   Menu,
   Notification,
+  Tray,
 } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -17,9 +18,15 @@ import { openTerminal, type TerminalCommand } from './terminal';
 import { importImages } from './images';
 import { CompletionTracker } from '../src/shared/completion';
 import { BackgroundTerminal } from './background-terminal';
+import { RemoteGateway } from './remote';
+import { tailscaleStatus, serveDesk } from './tailscale';
 
 let window: BrowserWindow | null = null;
 let service: DeskService;
+let remote: RemoteGateway;
+let tray: Tray | undefined;
+let quitting = false,
+  quitComplete = false;
 const devURL = !app.isPackaged ? process.env.CODEX_DESK_DEV_URL : undefined;
 const rendererFile = path.join(__dirname, '../dist/index.html');
 const allowedURL = devURL ?? pathToFileURL(rendererFile).href;
@@ -55,6 +62,7 @@ if (process.env.CODEX_DESK_USER_DATA) app.setPath('userData', path.resolve(proce
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => {
+    window?.show();
     if (window?.isMinimized()) window.restore();
     window?.focus();
   });
@@ -64,6 +72,19 @@ else {
       service = new DeskService(app.getPath('userData'));
       const backgroundTerminal = new BackgroundTerminal(path.join(app.getPath('userData'), 'terminals'));
       await service.init();
+      const remotePort =
+        process.env.CODEX_DESK_REMOTE_PORT === undefined ? 43125 : Number(process.env.CODEX_DESK_REMOTE_PORT);
+      if (!Number.isInteger(remotePort) || remotePort < 0 || remotePort > 65535)
+        throw new Error('Invalid CODEX_DESK_REMOTE_PORT.');
+      remote = new RemoteGateway({
+        port: remotePort,
+        directory: app.getPath('userData'),
+        assets: path.join(__dirname, '../dist'),
+        service,
+        importImages: (uploads) =>
+          importImages(path.join(app.getPath('userData'), 'attachments'), uploads, t),
+      });
+      await remote.init();
       // Permit headless integration tests to select a fake CLI without touching user preferences.
       if (!app.isPackaged && process.env.CODEX_DESK_TEST_BINARY)
         service.store.state.settings.binaryPath = process.env.CODEX_DESK_TEST_BINARY;
@@ -88,6 +109,30 @@ else {
         },
       });
       const session = window.webContents.session;
+      tray = new Tray(
+        nativeImage
+          .createFromPath(path.join(__dirname, '../assets/icon.png'))
+          .resize({ width: 22, height: 22 }),
+      );
+      tray.setToolTip('Codex Desk');
+      const showWindow = () => {
+        window?.show();
+        window?.focus();
+      };
+      tray.on('click', showWindow);
+      tray.setContextMenu(
+        Menu.buildFromTemplate([
+          { label: 'Codex Desk', click: showWindow },
+          { type: 'separator' },
+          { label: t('退出', 'Quit'), click: () => app.quit() },
+        ]),
+      );
+      window.on('close', (event) => {
+        if (remote.status.enabled && !quitting) {
+          event.preventDefault();
+          window?.hide();
+        }
+      });
       session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
       session.setPermissionCheckHandler(() => false);
       window.webContents.setWindowOpenHandler(({ url }) => {
@@ -128,6 +173,21 @@ else {
         trusted(event);
         if (typeof method !== 'string') throw new Error('Invalid operation.');
         try {
+          if (method.startsWith('remote.')) {
+            const args = params as Record<string, unknown> | undefined;
+            if (method === 'remote.status')
+              return { ok: true, value: { ...remote.status, tailscale: await tailscaleStatus() } };
+            if (method === 'remote.start') return { ok: true, value: await remote.start() };
+            if (method === 'remote.stop') return { ok: true, value: await remote.stop() };
+            if (method === 'remote.pair') return { ok: true, value: remote.createPairing() };
+            if (method === 'remote.revoke' && typeof args?.id === 'string')
+              return { ok: true, value: await remote.revoke(args.id) };
+            if (method === 'remote.serve') {
+              if (!remote.status.enabled) throw new Error('Enable phone access first.');
+              return { ok: true, value: await remote.setOrigin(await serveDesk(remote.status.port)) };
+            }
+            throw new Error('Unknown remote control operation.');
+          }
           return { ok: true, value: await service.handle(method, params ?? {}) };
         } catch (error) {
           return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -243,8 +303,15 @@ else {
     });
   app.on('window-all-closed', () => app.quit());
   app.on('before-quit', (event) => {
-    if (!service || service.codex.connection.phase === 'stopped') return;
+    quitting = true;
+    if (!service || quitComplete) return;
     event.preventDefault();
-    void service.codex.stop().then(() => app.quit());
+    void (async () => {
+      await remote?.stop(false);
+      await service.codex.stop();
+      tray?.destroy();
+      quitComplete = true;
+      app.quit();
+    })();
   });
 }

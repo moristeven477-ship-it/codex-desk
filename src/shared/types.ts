@@ -136,7 +136,9 @@ export interface Question {
   options?: { label: string; description: string }[] | null;
 }
 export interface CodexEvent {
-  kind: 'notification' | 'request' | 'connection' | 'resolved' | 'notice' | 'terminal' | 'navigate';
+  kind:
+    'notification' | 'request' | 'connection' | 'resolved' | 'notice' | 'terminal' | 'navigate' | 'remote';
+  online?: boolean;
   threadId?: string;
   method?: string;
   params?: JsonObject;
@@ -190,6 +192,7 @@ export interface ImageUpload {
   bytes: Uint8Array;
 }
 export interface NativeBridge {
+  remote?: boolean;
   request<T = unknown>(method: string, params?: JsonObject): Promise<T>;
   subscribe(listener: (event: CodexEvent) => void): () => void;
   pickDirectory(): Promise<string | null>;

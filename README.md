@@ -6,7 +6,7 @@
 
 Manage projects, pick up existing CLI conversations, watch Codex work, and review changes in one place. Built from scratch with Electron, React, and TypeScript. English and 简体中文 interfaces; dark and light themes.
 
-[Download for Ubuntu](https://github.com/moristeven477-ship-it/codex-desk/releases/latest) · [中文说明](README.zh-CN.md) · [Architecture](docs/ARCHITECTURE.md) · [Contributing](CONTRIBUTING.md)
+[Download for Ubuntu / Android](https://github.com/moristeven477-ship-it/codex-desk/releases/latest) · [中文说明](README.zh-CN.md) · [Architecture](docs/ARCHITECTURE.md) · [Contributing](CONTRIBUTING.md)
 
 ![Codex Desk — English, light theme](docs/screenshots/workspace-en-light.png)
 
@@ -37,6 +37,10 @@ _Screenshots show a synthetic test workspace. The application uses your real loc
 - Open the complete `/` command menu, graphical goal / plan / status controls, and an embedded real Codex terminal.
 - Use detailed model / effort / permission popovers and an original gradient SVG neon sakura icon.
 
+## Android remote control
+
+Install the Android APK and connect through **Tailscale** to this computer. The phone shares CLI conversations, settings, steering, approvals, goals and the embedded CLI. Changing Wi-Fi/cellular IP addresses does not require reconfiguration. Set up **Settings → Phone access** on Ubuntu, then enter its HTTPS address and one-time pairing code in Android. [Installation and pairing guide](docs/ANDROID.md).
+
 ## Install on Ubuntu
 
 **Release target: Ubuntu 24.04 x86-64.** Other distributions and CPU architectures have not been validated.
@@ -50,14 +54,14 @@ npm install -g @openai/codex
 codex login
 ```
 
-If Codex already works in your terminal, keep that installation. Codex Desk discovers common npm, nvm, Volta, and local binary locations. You can also choose an absolute executable path in **Settings → Codex CLI**. Tested against **codex-cli 0.154.0**; older/newer protocol versions may differ.
+If Codex already works in your terminal, keep that installation. Codex Desk discovers common npm, nvm, Volta, and local binary locations. You can also choose an absolute executable path in **Settings → Codex CLI**. Tested against **codex-cli 0.157.1**; older/newer protocol versions may differ.
 
 ### 2. Install the desktop application
 
 Download the `.deb` from [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest), then run:
 
 ```bash
-sudo apt install ./codex-desk-0.2.7-amd64.deb
+sudo apt install ./codex-desk-0.3.0-amd64.deb
 ```
 
 Launch **Codex Desk** from Ubuntu's application menu, or run `codex-desk`.
@@ -67,14 +71,14 @@ The package includes the Electron runtime; Node.js is needed separately only for
 ### Portable AppImage
 
 ```bash
-chmod +x codex-desk-0.2.7-x86_64.AppImage
-./codex-desk-0.2.7-x86_64.AppImage
+chmod +x codex-desk-0.3.0-x86_64.AppImage
+./codex-desk-0.3.0-x86_64.AppImage
 ```
 
 If FUSE is unavailable, run without mounting the AppImage:
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.7-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.3.0-x86_64.AppImage
 ```
 
 The `.deb` is recommended on Ubuntu 24.04: its installer includes Electron's Ubuntu AppArmor integration. Do not disable Chromium's sandbox to work around an installation problem. See [Troubleshooting](docs/TROUBLESHOOTING.md).
@@ -147,7 +151,7 @@ Completion banners disappear after eight seconds and can be dismissed or clicked
 
 ## Local data and authentication
 
-The renderer talks to Electron through validated IPC. Desk connects to the official app-server using **WebSocket over a local Unix domain socket**, with no TCP listening port or cloud relay. If absent, it starts the shared server. npm installations that cannot use `app-server daemon start` use a detached official `app-server --listen unix://…` listener. No application telemetry is added.
+The renderer talks to Electron through validated IPC. Desk connects to the official app-server using **WebSocket over a local Unix domain socket**, without a TCP listener by default. Optional phone access adds a loopback-only gateway behind Tailscale Serve HTTPS; see the [Android guide](docs/ANDROID.md). If absent, it starts the shared server. npm installations that cannot use `app-server daemon start` use a detached official `app-server --listen unix://…` listener. No application telemetry is added.
 
 - Conversations and authentication remain in Codex's own home directory, normally `~/.codex`.
 - Project bookmarks and preferences are stored in Electron's user-data directory, normally `~/.config/Codex Desk/state.json`.
@@ -164,8 +168,8 @@ The file inspector validates canonical paths and rejects symbolic links that esc
 
 - The file/Git inspector is read-only; ask Codex to make edits.
 - Live synchronization requires the shared server. An already-running standalone CLI needs the one-time reconnect described above.
-- No remote hosting, automatic updater, scheduling, or other AI-provider adapters.
-- Native file/image pickers and window controls require the desktop application. The Vite browser view is a development/test surface.
+- No public hosting, automatic updater, scheduling, or other AI-provider adapters. Remote access uses your Tailscale network and a paired device.
+- Android uses its native image picker and the remote interface. Background push notifications and physical-device certification are not included.
 - MCP form requests currently use a JSON response field. Unsupported client protocol requests are rejected explicitly instead of silently approved.
 
 ## Develop

@@ -10,6 +10,10 @@
 
 _截图使用测试项目，应用实际连接本机 Codex CLI。_
 
+## 安卓远程控制
+
+安装安卓版 APK，通过 **Tailscale** 控制这台 Ubuntu 电脑。手机切换 Wi-Fi / 流量、外网 IP 改变无需重新配置。会话、CLI 设置、插话、审批、goal 和真实终端共享；电脑端「设置 → 手机连接」启用后，在安卓端填写 HTTPS 地址和一次性配对码。[安装与配对说明](docs/ANDROID.md#简体中文)。
+
 ## 主要功能
 
 - 管理项目目录，按项目或标题查找会话。
@@ -55,7 +59,7 @@ codex login
 从 [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest) 下载 `.deb`：
 
 ```bash
-sudo apt install ./codex-desk-0.2.7-amd64.deb
+sudo apt install ./codex-desk-0.3.0-amd64.deb
 ```
 
 安装后在 Ubuntu 应用菜单中打开 **Codex Desk**，或运行 `codex-desk`。
@@ -63,14 +67,14 @@ sudo apt install ./codex-desk-0.2.7-amd64.deb
 也可下载便携 AppImage：
 
 ```bash
-chmod +x codex-desk-0.2.7-x86_64.AppImage
-./codex-desk-0.2.7-x86_64.AppImage
+chmod +x codex-desk-0.3.0-x86_64.AppImage
+./codex-desk-0.3.0-x86_64.AppImage
 ```
 
 没有 FUSE 时：
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.2.7-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.3.0-x86_64.AppImage
 ```
 
 Ubuntu 24.04 优先使用 `.deb`，安装器包含 Electron 的 AppArmor 集成。遇到沙箱错误时参考[故障排查](docs/TROUBLESHOOTING.md)，不要通过关闭沙箱解决。
@@ -114,7 +118,7 @@ Ubuntu 24.04 优先使用 `.deb`，安装器包含 Electron 的 AppArmor 集成�
 
 ## 数据与边界
 
-应用通过本机 Unix socket 上的 WebSocket 连接官方 `codex app-server`，不监听 TCP 端口、不提供云中转、不收集应用遥测。服务不存在时自动启动；npm 版无法使用官方 daemon 安装入口时，会启动独立于 Desk 生命周期的官方 Unix 监听进程。
+应用通过本机 Unix socket 上的 WebSocket 连接官方 `codex app-server`，默认不监听 TCP 端口。可选手机连接启用仅监听本机回环地址的网关，由 Tailscale Serve 提供网络内 HTTPS；不收集应用遥测。服务不存在时自动启动；npm 版无法使用官方 daemon 安装入口时，会启动独立于 Desk 生命周期的官方 Unix 监听进程。
 
 - 会话与登录凭证仍由 Codex 管理，通常位于 `~/.codex`。
 - 项目书签与偏好通常位于 `~/.config/Codex Desk/state.json`。
@@ -124,7 +128,7 @@ Ubuntu 24.04 优先使用 `.deb`，安装器包含 Electron 的 AppArmor 集成�
 - 文件面板是只读预览；文件编辑由 Codex 完成。移除书签不会删除项目文件。
 - 实时同步要求 CLI 与 Desk 连接同一共享服务，独立 CLI 需要按下方说明重新连接一次。
 - 关闭 Desk 会断开它的客户端，共享服务与运行任务继续保留。
-- 本版不含远程访问、自动更新、定时任务或其他模型代理的接入。
+- 远程访问使用 Tailscale 网络及设备配对；本版不含公网托管、自动更新、定时任务或其他模型代理的接入。
 - MCP 表单暂用 JSON 字段回答；尚未实现的客户端协议请求会明确拒绝。
 
 ## CLI 与 Desk 双向同步

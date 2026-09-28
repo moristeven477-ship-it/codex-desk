@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">Codex Desk</string>
+    <string name="heading">在手机上，继续你的 Codex。</string>
+    <string name="intro">填写电脑端「设置 → 手机连接」显示的 Tailscale 地址。手机和电脑需连接同一 Tailscale 网络。</string>
+    <string name="address">电脑连接地址</string>
+    <string name="address_hint">https://computer.tailnet.ts.net:8443</string>
+    <string name="connect">连接电脑</string>
+    <string name="tailscale">安装或打开 Tailscale</string>
+    <string name="connection_settings">连接设置</string>
+    <string name="invalid_address">请填写 Codex Desk 显示的 HTTPS .ts.net 地址。</string>
+    <string name="offline">暂时无法连接电脑。请检查两端的 Tailscale，并保持电脑上的 Desk 运行。</string>
+    <string name="certificate">无法验证电脑的 HTTPS 证书。请通过 Tailscale Serve 配置连接地址。</string>
+    <string name="retry">重新连接</string>
+    <string name="select_images">选择图片</string>
+    <string name="image_limit">最多选择 8 张图片。</string>
+    <string name="no_browser">没有可打开此链接的应用。</string>
+</resources>

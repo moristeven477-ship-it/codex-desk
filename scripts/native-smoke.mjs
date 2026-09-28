@@ -1,4 +1,4 @@
-import { _electron as electron, expect } from '@playwright/test';
+import { _electron as electron, chromium, expect } from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, readFile, readdir, stat, chmod, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
@@ -26,12 +26,18 @@ await writeFile(
   }),
 );
 let desktop;
+let phoneBrowser;
 try {
   desktop = await electron.launch({
     executablePath: process.env.DESK_EXECUTABLE || path.resolve('release/linux-unpacked/codex-desk'),
     args: process.env.DESK_TEST_NO_SANDBOX === '1' ? ['--no-sandbox'] : [],
     timeout: 20_000,
-    env: { ...process.env, CODEX_DESK_USER_DATA: directory, CODEX_DESK_FIXTURE_ROOT: project },
+    env: {
+      ...process.env,
+      CODEX_DESK_USER_DATA: directory,
+      CODEX_DESK_FIXTURE_ROOT: project,
+      CODEX_DESK_REMOTE_PORT: '0',
+    },
   });
   const page = await desktop.firstWindow();
   // Capture notifications in this test process without notifying the user's desktop.
@@ -242,6 +248,59 @@ try {
   expect(await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible())).toBe(
     true,
   );
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Phone access', exact: true }).click();
+  await page.getByRole('button', { name: 'Enable access', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Disable access', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Create pairing code', exact: true }).click();
+  const code = await page.locator('.remote-pair-code code').innerText();
+  const gateway = await page.evaluate(() => window.codexDesk.request('remote.status'));
+  phoneBrowser = await chromium.launch({
+    executablePath: await stat('/usr/bin/google-chrome')
+      .then(() => '/usr/bin/google-chrome')
+      .catch(() => undefined),
+    headless: true,
+  });
+  const phone = await phoneBrowser.newPage({ viewport: { width: 393, height: 851 }, locale: 'en-US' });
+  phone.on('pageerror', (error) => errors.push('Phone: ' + error.message));
+  await phone.goto(gateway.localOrigin);
+  await phone.getByRole('textbox', { name: 'Pairing code', exact: true }).fill(code);
+  await phone.getByRole('button', { name: 'Pair and connect' }).click();
+  const phoneComposer = phone.getByRole('textbox', { name: 'Message Codex', exact: true });
+  await expect(phoneComposer).toBeVisible();
+  await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+  expect(await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible())).toBe(
+    false,
+  );
+  const picker = phone.waitForEvent('filechooser');
+  await phone.getByRole('button', { name: 'Attach images', exact: true }).click();
+  await (
+    await picker
+  ).setFiles({ name: 'android.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+  await expect(phone.locator('.image-attachments img')).toHaveCount(1);
+  await phoneComposer.fill('Phone controls Codex while Desk is hidden.');
+  await phone.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(phone.locator('.user-text').last()).toHaveText('Phone controls Codex while Desk is hidden.');
+  await expect(phone.getByRole('button', { name: 'Send message', exact: true })).toBeVisible();
+  await expect(phone.locator('.markdown').last()).toContainText('Your local Codex conversation is working.');
+  const phoneThread = await phone.evaluate(async () => {
+    const boot = await window.codexDesk.request('bootstrap');
+    return window.codexDesk.request('thread.read', { threadId: boot.settings.lastThreadId });
+  });
+  const phoneImage = phoneThread.turns
+    .at(-1)
+    .items.find((item) => item.type === 'userMessage')
+    .content.find((item) => item.type === 'localImage').path;
+  expect(path.dirname(phoneImage)).toBe(path.join(directory, 'attachments'));
+  expect((await stat(phoneImage)).mode & 0o777).toBe(0o600);
+  await phone.screenshot({ path: 'test-results/native-phone.png' });
+  await page.evaluate(
+    (id) => window.codexDesk.request('remote.revoke', { id }),
+    gateway.devices.length
+      ? gateway.devices.at(-1).id
+      : (await page.evaluate(() => window.codexDesk.request('remote.status'))).devices[0].id,
+  );
+  await expect(phone.getByRole('button', { name: 'Pair and connect' })).toBeVisible();
   if (errors.length) throw new Error(errors.join('\n'));
   console.log(
     JSON.stringify({
@@ -262,6 +321,8 @@ try {
       compaction: 'official lifecycle events through native IPC',
       completionNotices: 'in-app toast + captured native notification click',
       rendererSandbox: preferences.sandbox,
+      androidGateway:
+        'native pairing, private image upload, phone turn while desktop window is closed, device revocation',
       chromiumSandboxDisabledForTest: process.env.DESK_TEST_NO_SANDBOX === '1',
     }),
   );
@@ -273,6 +334,7 @@ try {
   }
   throw error;
 } finally {
+  if (phoneBrowser) await phoneBrowser.close();
   if (desktop) await desktop.close();
   // Only terminate synthetic CLI processes recorded in this test's private data.
   for (const name of await readdir(path.join(directory, 'terminals')).catch(() => [])) {

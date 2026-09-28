@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">Codex Desk</string>
+    <string name="heading">Your Codex. On your phone.</string>
+    <string name="intro">Use the Tailscale address from Phone access in your computer’s Codex Desk settings. Connect both devices to the same Tailscale network.</string>
+    <string name="address">Computer address</string>
+    <string name="address_hint">https://computer.tailnet.ts.net:8443</string>
+    <string name="connect">Connect to computer</string>
+    <string name="tailscale">Install or open Tailscale</string>
+    <string name="connection_settings">Connection settings</string>
+    <string name="invalid_address">Enter the HTTPS .ts.net address shown by Codex Desk.</string>
+    <string name="offline">Could not reach your computer. Check Tailscale on both devices and keep Desk running on the computer.</string>
+    <string name="certificate">The computer’s HTTPS certificate could not be verified. Configure its address using Tailscale Serve.</string>
+    <string name="retry">Retry connection</string>
+    <string name="select_images">Select images</string>
+    <string name="image_limit">Choose up to 8 images.</string>
+    <string name="no_browser">No app is available to open this link.</string>
+</resources>

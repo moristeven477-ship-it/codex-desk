@@ -1,6 +1,6 @@
 {
   "name": "codex-desk",
-  "version": "0.2.7",
+  "version": "0.3.0",
   "private": true,
   "description": "A focused Ubuntu desktop workspace for Codex CLI.",
   "homepage": "https://github.com/moristeven477-ship-it/codex-desk",
@@ -23,6 +23,7 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "test:e2e": "playwright test",
+    "test:remote": "npm run build && playwright test --config playwright.remote.config.ts",
     "test:live": "tsx scripts/live-smoke.ts",
     "package:linux": "npm run build && electron-builder --linux deb AppImage --publish never",
     "package:dir": "npm run build && electron-builder --linux dir --publish never",

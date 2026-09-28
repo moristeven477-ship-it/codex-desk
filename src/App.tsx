@@ -63,7 +63,8 @@ export function App() {
 function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
   const t = useT(),
     { boot, thread, threadId, projectId } = desk;
-  const [sidebar, setSidebar] = useState(true),
+  const remote = !!window.codexDesk?.remote;
+  const [sidebar, setSidebar] = useState(() => !remote || window.innerWidth >= 760),
     [inspector, setInspector] = useState(() => window.innerWidth >= 1190),
     [settings, setSettings] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(264),
@@ -76,6 +77,15 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
     [goalObjective, setGoalObjective] = useState(''),
     [statusPanel, setStatusPanel] = useState(false);
   const [cliPanel, setCliPanel] = useState<{ threadId: string; command: string } | null>(null);
+  useEffect(() => {
+    const open = (event: Event) =>
+      setCliPanel({ threadId: (event as CustomEvent<string>).detail, command: '' });
+    window.addEventListener('desk:terminal', open);
+    return () => window.removeEventListener('desk:terminal', open);
+  }, []);
+  useEffect(() => {
+    if (remote && window.innerWidth < 760) setSidebar(false);
+  }, [threadId, remote]);
   const [inspectorTab, setInspectorTab] = useState<{ tab: 'files' | 'changes'; revision: number }>({
     tab: 'files',
     revision: 0,
@@ -112,7 +122,7 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
   const project = thread
     ? boot.projects.find((p) => p.path === thread.cwd)
     : boot.projects.find((p) => p.id === projectId);
-  const ready = boot.connection.phase === 'ready',
+  const ready = boot.connection.phase === 'ready' && desk.remoteOnline,
     turn = activeTurn(thread),
     running = !!turn;
   const currentApprovals = desk.approvals.filter((a) => a.params.threadId === threadId);
@@ -271,34 +281,51 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
           <span>
             Codex <strong>Desk</strong>
           </span>
-          <span className="ubuntu-badge">Ubuntu</span>
+          <span className="ubuntu-badge">{remote ? 'Android' : 'Ubuntu'}</span>
         </div>
         <div className="titlebar-center">
           <span className={`status-dot ${ready ? '' : 'offline'}`} />
           {t('你的本地 Codex 工作空间', 'Your local Codex workspace')}
         </div>
-        <div className="window-controls">
+        {remote && (
           <button
-            onClick={() => void window.codexDesk?.windowAction('minimize')}
-            aria-label={t('最小化', 'Minimize')}
+            className="icon-button remote-settings-button"
+            onClick={() => setSettings(true)}
+            aria-label={t('设置', 'Settings')}
           >
-            <Minus size={14} />
+            <Settings2 size={18} />
           </button>
-          <button
-            onClick={() => void window.codexDesk?.windowAction('maximize')}
-            aria-label={t('最大化', 'Maximize')}
-          >
-            <Maximize2 size={12} />
-          </button>
-          <button
-            className="window-close"
-            onClick={() => void window.codexDesk?.windowAction('close')}
-            aria-label={t('关闭窗口', 'Close window')}
-          >
-            <X size={16} />
-          </button>
-        </div>
+        )}
+        {!remote && (
+          <div className="window-controls">
+            <button
+              onClick={() => void window.codexDesk?.windowAction('minimize')}
+              aria-label={t('最小化', 'Minimize')}
+            >
+              <Minus size={14} />
+            </button>
+            <button
+              onClick={() => void window.codexDesk?.windowAction('maximize')}
+              aria-label={t('最大化', 'Maximize')}
+            >
+              <Maximize2 size={12} />
+            </button>
+            <button
+              className="window-close"
+              onClick={() => void window.codexDesk?.windowAction('close')}
+              aria-label={t('关闭窗口', 'Close window')}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
       </header>
+      {remote && !desk.remoteOnline && (
+        <div className="remote-offline" role="status">
+          <Loader2 size={14} className="spin" />
+          {t('正在重新连接电脑… 任务仍在电脑上运行。', 'Reconnecting… Tasks continue on your computer.')}
+        </div>
+      )}
       <div
         className="workspace-layout"
         style={
@@ -308,6 +335,16 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
           } as React.CSSProperties
         }
       >
+        {remote && (sidebar || inspector) && (
+          <button
+            className="mobile-panel-dismiss"
+            aria-label={t('关闭侧面板', 'Close side panel')}
+            onClick={() => {
+              setSidebar(false);
+              setInspector(false);
+            }}
+          />
+        )}
         {sidebar && (
           <>
             <aside className="sidebar">
@@ -524,7 +561,7 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
               {thread && !desk.archived && (
                 <button
                   className="text-button sync-terminal-button"
-                  onClick={() => setSyncDialog(true)}
+                  onClick={() => (remote ? setCliPanel({ threadId, command: '' }) : setSyncDialog(true))}
                   title={t('在终端同步打开', 'Open synced terminal')}
                 >
                   <Terminal size={15} />

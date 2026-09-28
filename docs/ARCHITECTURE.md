@@ -82,3 +82,9 @@ Vite builds static renderer assets. esbuild bundles main and preload code, leavi
 Each build regenerates `THIRD_PARTY_NOTICES.txt` from the locked runtime dependency graph and includes it in the desktop application. Electron/Chromium license files are also included in the packaged runtime. File previews accept regular text files up to 1 MiB and render the first 3,000 lines; Git output is bounded separately.
 
 Test fixtures never load real user credentials. Browser tests exercise React against `DeskService`, a real Unix WebSocket listener, and a deterministic backend. The same backend serves multiple independent clients in sync tests. Native smoke checks additionally exercise the packaged Electron preload/IPC and PTY boundaries. An opt-in live round trip verifies messages and goals against the real installed TUI.
+
+## Android and private remote access
+
+`RemoteGateway` wraps the existing `DeskService`; it does not run a second Codex or maintain a separate conversation store. Its loopback HTTP/WS endpoints are exposed by Tailscale Serve. Per-device cookies authenticate a restricted RPC allowlist. Mobile events come from the same service emitter as desktop IPC; reconnect bootstraps pending approvals and reads the current thread from Codex. Read results are not retained in the bounded mutation-receipt cache.
+
+The React interface uses `RemoteBridge` in the Android WebView or paired browser, and Electron preload on the desktop. The Android Java shell owns connection settings, certificate enforcement, native image selection and network wake signals. Phone preferences are per-device, while CLI thread settings remain authoritative. Remote terminals belong to the device that started them and are closed on revoke/disable. A network interruption does not cancel Codex work or automatically replay input.

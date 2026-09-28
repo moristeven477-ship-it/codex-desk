@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0
+
+- Add an Android client and optional Tailscale HTTPS gateway to control the same computer-side Codex CLI sessions.
+- Add one-use pairing codes, device revocation, private session storage and background desktop tray operation.
+- Adapt conversation drawers, composer, steering receipts, settings, approvals and goals for phones; support image uploads and the real CLI terminal.
+- Reconcile history after network changes without replaying messages or interrupting the running task; keep phone appearance and selected conversation separate.
+- Include English/Chinese setup documentation and a rootless Ubuntu Tailscale helper.
+
 ## 0.2.7
 
 - Show steering text, attachment names and delivery status above the composer as soon as it is submitted. Keep pending receipts across conversation changes and restarts; support copying in English and Simplified Chinese.
