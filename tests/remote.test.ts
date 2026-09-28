@@ -67,7 +67,8 @@ test('remote commands share CLI state, deduplicate delivery and keep phone prefe
       });
       return { status: response.status, ...(await response.json()) };
     };
-    assert.equal((await rpc('remote.pair')).ok, false);
+    for (const operation of ['remote.pair', 'remote.setup', 'remote.retry', 'remote.status', 'remote.stop'])
+      assert.equal((await rpc(operation)).ok, false);
     assert.equal((await rpc('settings.update', { binaryPath: '/tmp/other-codex' })).ok, false);
     assert.equal((await rpc('codex.restart')).ok, false);
     await rpc('settings.update', { locale: 'zh', fontSize: 17.5, lastThreadId: 'fixture-history' });

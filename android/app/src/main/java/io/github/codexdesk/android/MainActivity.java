@@ -45,6 +45,7 @@ public class MainActivity extends Activity {
     private WebView browser;
     private LinearLayout failure;
     private TextView failureText;
+    private Button tailscaleButton;
     private String origin;
     private ValueCallback<Uri[]> files;
     private ConnectivityManager connectivity;
@@ -101,6 +102,13 @@ public class MainActivity extends Activity {
         column.addView(text("Codex Desk · Android", 16));
         column.addView(text(getString(R.string.heading), 28));
         column.addView(text(getString(R.string.intro), 16));
+        column.addView(text(getString(R.string.step_tailscale), 19));
+        column.addView(text(getString(R.string.tailscale_help), 15));
+        tailscaleButton = button(R.string.tailscale, v -> openTailscale());
+        column.addView(tailscaleButton);
+        updateTailscaleButton();
+        column.addView(text(getString(R.string.step_pair), 19));
+        column.addView(text(getString(R.string.pair_help), 15));
         column.addView(text(getString(R.string.address), 14));
         EditText address = new EditText(this); address.setSingleLine(); address.setTextColor(FG); address.setHintTextColor(Color.GRAY);
         address.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
@@ -111,15 +119,21 @@ public class MainActivity extends Activity {
             try { origin = Endpoint.normalize(address.getText().toString()); getPreferences(MODE_PRIVATE).edit().putString("origin", origin).apply(); showBrowser(); }
             catch (IllegalArgumentException error) { address.setError(getString(R.string.invalid_address)); }
         }));
-        column.addView(button(R.string.tailscale, v -> {
-            Intent launch = getPackageManager().getLaunchIntentForPackage("com.tailscale.ipn");
-            if (launch != null) startActivity(launch); else external("https://tailscale.com/download/android");
-        }));
         scroll.addView(column); root.addView(scroll, new LinearLayout.LayoutParams(-1, -1));
+    }
+    private void updateTailscaleButton() {
+        if (tailscaleButton != null) tailscaleButton.setText(getPackageManager().getLaunchIntentForPackage("com.tailscale.ipn") == null ? R.string.install_tailscale : R.string.open_tailscale);
+    }
+    private void openTailscale() {
+        Intent launch = getPackageManager().getLaunchIntentForPackage("com.tailscale.ipn");
+        if (launch != null) {
+            try { startActivity(launch); return; } catch (ActivityNotFoundException ignored) { }
+        }
+        external("https://tailscale.com/download/android");
     }
     @SuppressLint("SetJavaScriptEnabled")
     private void showBrowser() {
-        disposeBrowser(); root.removeAllViews();
+        disposeBrowser(); root.removeAllViews(); tailscaleButton = null;
         LinearLayout toolbar = new LinearLayout(this); toolbar.setGravity(Gravity.CENTER_VERTICAL);
         toolbar.setPadding(dp(12), 0, dp(6), 0);
         TextView host = text(Uri.parse(origin).getHost(), 12); host.setSingleLine(); host.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -186,6 +200,7 @@ public class MainActivity extends Activity {
         failure = new LinearLayout(this); failure.setOrientation(LinearLayout.VERTICAL); failure.setGravity(Gravity.CENTER); failure.setPadding(dp(24), dp(24), dp(24), dp(24)); failure.setBackgroundColor(BG);
         failureText = text("", 17); failureText.setGravity(Gravity.CENTER); failure.addView(failureText);
         failure.addView(button(R.string.retry, v -> { failure.setVisibility(View.GONE); browser.reload(); }));
+        failure.addView(button(R.string.open_tailscale, v -> openTailscale()));
         failure.setVisibility(View.GONE); content.addView(failure, new FrameLayout.LayoutParams(-1, -1));
         browser.loadUrl(origin + "/");
     }
@@ -201,7 +216,7 @@ public class MainActivity extends Activity {
         if (failure != null && failure.getVisibility() == View.VISIBLE) { failure.setVisibility(View.GONE); browser.reload(); }
         else browser.evaluateJavascript("window.dispatchEvent(new Event('online'))", null);
     }
-    @Override protected void onResume() { super.onResume(); wake(); }
+    @Override protected void onResume() { super.onResume(); updateTailscaleButton(); wake(); }
     @Override protected void onPause() { CookieManager.getInstance().flush(); super.onPause(); }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);

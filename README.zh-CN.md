@@ -12,7 +12,7 @@ _截图使用测试项目，应用实际连接本机 Codex CLI。_
 
 ## 安卓远程控制
 
-安装安卓版 APK，通过 **Tailscale** 控制这台 Ubuntu 电脑。手机切换 Wi-Fi / 流量、外网 IP 改变无需重新配置。会话、CLI 设置、插话、审批、goal 和真实终端共享；电脑端「设置 → 手机连接」启用后，在安卓端填写 HTTPS 地址和一次性配对码。[安装与配对说明](docs/ANDROID.md#简体中文)。
+安装安卓版 APK，通过 **Tailscale** 控制这台 Ubuntu 电脑。手机切换 Wi-Fi / 流量、外网 IP 改变无需重新配置。会话、CLI 设置、插话、审批、goal 和真实终端共享；电脑端点击「**设置 → 手机连接 → 一键设置手机连接**」，自动完成安装和地址配置；登录后会自动继续。安卓 App 内提供 Tailscale 安装/打开引导，再填写 HTTPS 地址和一次性配对码。[安装与配对说明](docs/ANDROID.md#简体中文)。
 
 ## 主要功能
 
@@ -59,7 +59,7 @@ codex login
 从 [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest) 下载 `.deb`：
 
 ```bash
-sudo apt install ./codex-desk-0.3.0-amd64.deb
+sudo apt install ./codex-desk-0.3.1-amd64.deb
 ```
 
 安装后在 Ubuntu 应用菜单中打开 **Codex Desk**，或运行 `codex-desk`。
@@ -67,14 +67,14 @@ sudo apt install ./codex-desk-0.3.0-amd64.deb
 也可下载便携 AppImage：
 
 ```bash
-chmod +x codex-desk-0.3.0-x86_64.AppImage
-./codex-desk-0.3.0-x86_64.AppImage
+chmod +x codex-desk-0.3.1-x86_64.AppImage
+./codex-desk-0.3.1-x86_64.AppImage
 ```
 
 没有 FUSE 时：
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.3.0-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.3.1-x86_64.AppImage
 ```
 
 Ubuntu 24.04 优先使用 `.deb`，安装器包含 Electron 的 AppArmor 集成。遇到沙箱错误时参考[故障排查](docs/TROUBLESHOOTING.md)，不要通过关闭沙箱解决。

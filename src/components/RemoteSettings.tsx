@@ -1,26 +1,59 @@
-import { useEffect, useState } from 'react';
-import { Smartphone, Copy, RefreshCw, Link2, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Smartphone, Copy, RefreshCw, ExternalLink, X, Check, LoaderCircle, Download } from 'lucide-react';
 import { useT } from '../lib/i18n';
 import { request } from '../lib/useDesk';
-type Status = {
-  enabled: boolean;
-  port: number;
-  publicOrigin: string;
-  localOrigin: string;
-  devices: { id: string; name: string; online: boolean }[];
-  tailscale: { installed: boolean; state: string; url: string };
-};
+import type { PhoneStatus, SetupStage } from '../shared/remote';
+
 export function RemoteSettings({ onError }: { onError: (error: unknown) => void }) {
   const t = useT();
-  const [status, setStatus] = useState<Status>(),
+  const [status, setStatus] = useState<PhoneStatus>(),
     [busy, setBusy] = useState(false);
   const [pair, setPair] = useState<{ code: string; expiresAt: number }>();
-  async function refresh() {
-    setStatus(await request<Status>('remote.status'));
-  }
+  const [now, setNow] = useState(Date.now());
+  const pairRequested = useRef(false);
+  const refresh = useCallback(async () => {
+    setStatus(await request<PhoneStatus>('remote.status'));
+  }, []);
   useEffect(() => {
-    void refresh().catch(onError);
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    async function poll() {
+      try {
+        const value = await request<PhoneStatus>('remote.status');
+        if (!disposed) {
+          setStatus(value);
+          setNow(Date.now());
+        }
+      } catch (error) {
+        if (!disposed) onError(error);
+      }
+      if (!disposed) timer = setTimeout(() => void poll(), 1500);
+    }
+    void poll();
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+    };
   }, [onError]);
+  const stage = status?.setup.stage ?? 'idle';
+  const ready = !!(
+    status?.enabled &&
+    !status.setup.active &&
+    stage !== 'error' &&
+    status.tailscale.state === 'Running' &&
+    status.publicOrigin &&
+    status.publicOrigin === status.tailscale.url
+  );
+  const createPair = useCallback(async () => {
+    setPair(await request<{ code: string; expiresAt: number }>('remote.pair'));
+    setNow(Date.now());
+  }, []);
+  useEffect(() => {
+    if (ready && !pairRequested.current && !status?.devices.length) {
+      pairRequested.current = true;
+      void createPair().catch(onError);
+    }
+  }, [ready, status?.devices.length, createPair, onError]);
   async function action(method: string, params = {}) {
     setBusy(true);
     try {
@@ -32,6 +65,22 @@ export function RemoteSettings({ onError }: { onError: (error: unknown) => void 
       setBusy(false);
     }
   }
+  const open = (url: string) => void window.codexDesk?.openExternal(url).catch(onError);
+  const labels: Record<SetupStage, [string, string]> = {
+    idle: ['连接你的手机', 'Connect your phone'],
+    checking: ['正在检查电脑连接…', 'Checking this computer…'],
+    downloading: ['正在下载 Tailscale…', 'Downloading Tailscale…'],
+    installing: ['正在校验并安装…', 'Verifying and installing…'],
+    starting: ['正在启动连接…', 'Starting the connection…'],
+    login: ['登录 Tailscale', 'Sign in to Tailscale'],
+    approval: ['需要批准这台设备', 'Approve this device'],
+    https: ['启用安全连接', 'Enable secure connections'],
+    serving: ['正在配置连接地址…', 'Configuring your address…'],
+    ready: ['电脑已就绪', 'Computer is ready'],
+    error: ['设置未完成', 'Setup needs attention'],
+  };
+  const active = !!status?.setup.active;
+  const expired = pair && pair.expiresAt <= now;
   return (
     <div className="remote-settings">
       <h3>
@@ -39,99 +88,181 @@ export function RemoteSettings({ onError }: { onError: (error: unknown) => void 
       </h3>
       <p className="muted">
         {t(
-          '安卓端通过 Tailscale 控制这台电脑上的 Codex，会话和 CLI 设置保持同步。',
-          'Control Codex on this computer through Tailscale. Conversations and CLI settings stay synchronized.',
+          'Desk 自动安装并配置电脑连接。登录后，将地址和配对码填入安卓 App，即可继续同一个 Codex 会话。',
+          'Desk installs and configures your computer connection. Sign in, then enter the address and pairing code in Android to continue the same Codex conversation.',
         )}
       </p>
-      <div className="setting-row">
-        <span>{t('手机连接', 'Phone access')}</span>
-        <button
-          className="secondary-button"
-          disabled={busy || !status}
-          onClick={() => {
-            setPair(undefined);
-            void action(status?.enabled ? 'remote.stop' : 'remote.start');
-          }}
-        >
-          {status?.enabled ? t('关闭连接', 'Disable access') : t('启用连接', 'Enable access')}
-        </button>
-      </div>
-      {status?.enabled && (
-        <>
+      <div className={`remote-setup-card ${ready ? 'is-ready' : ''}`}>
+        <div className="remote-step-heading">
+          <span className="remote-step-number">{ready ? <Check size={17} /> : '1'}</span>
+          <strong>{t('连接这台电脑', 'Connect this computer')}</strong>
+          {active && <LoaderCircle size={17} className="remote-spinner" aria-hidden="true" />}
+        </div>
+        <p role="status" aria-live="polite" className="remote-setup-status">
+          {t(...labels[ready ? 'ready' : stage === 'ready' ? 'idle' : stage])}
+        </p>
+        {stage === 'idle' && !ready && (
           <p>
             {t(
-              '关闭窗口后，Desk 会留在系统托盘继续提供手机连接。从托盘退出将断开手机。',
-              'Closing the window keeps Desk in the system tray for phone access. Quitting from the tray disconnects the phone.',
+              '点击一次，Desk 会完成下载、安装和地址配置。',
+              'One click starts the download, installation and address setup.',
             )}
           </p>
-          <div className="remote-setup-step">
-            <strong>1 · Tailscale</strong>
-            <p>
-              {status.tailscale.state === 'Running'
-                ? t('已登录 Tailscale', 'Signed in to Tailscale')
+        )}
+        {stage === 'downloading' && (
+          <progress
+            max={100}
+            value={status?.setup.progress}
+            aria-label={t('下载进度', 'Download progress')}
+          />
+        )}
+        {['login', 'approval', 'https'].includes(stage) && (
+          <p>
+            {stage === 'login'
+              ? t(
+                  '使用与手机相同的 Tailscale 账号登录。完成后这里会自动继续，无需输入命令。',
+                  'Sign in with the same Tailscale account as your phone. Setup continues automatically when you finish.',
+                )
+              : stage === 'https'
+                ? t(
+                    '在 Tailscale 页面开启 HTTPS。完成后，Desk 会自动生成手机连接地址。',
+                    'Enable HTTPS on the Tailscale page. Desk will then finish your phone connection address automatically.',
+                  )
                 : t(
-                    '请先在电脑和手机上登录同一 Tailscale 网络。安装说明见下方。',
-                    'Sign in to the same Tailscale network on your computer and phone. See the setup guide below.',
+                    '在 Tailscale 管理页面批准这台电脑，Desk 会自动继续。',
+                    'Approve this computer in Tailscale. Desk will continue automatically.',
                   )}
-            </p>
-            <button className="secondary-button" disabled={busy} onClick={() => void action('remote.serve')}>
-              <Link2 size={14} />
-              {t('配置 Tailscale 地址', 'Configure Tailscale address')}
-            </button>
-          </div>
-          {status.publicOrigin && (
-            <label className="field-label">
-              {t('在安卓 App 中填写此地址', 'Enter this address in the Android app')}
-              <div className="remote-copy-field">
-                <input
-                  readOnly
-                  value={status.publicOrigin}
-                  aria-label={t('手机连接地址', 'Phone connection address')}
-                />
-                <button
-                  className="icon-button"
-                  aria-label={t('复制地址', 'Copy address')}
-                  onClick={() => void window.codexDesk?.copyText(status.publicOrigin).catch(onError)}
-                >
-                  <Copy size={16} />
-                </button>
-              </div>
-            </label>
-          )}
-          <div className="remote-setup-step">
-            <strong>2 · {t('配对手机', 'Pair your phone')}</strong>
-            <p>
-              {t(
-                '配对码只能使用一次，5 分钟内有效。配对后的登录保留 30 天，可随时撤销。',
-                'Pairing codes work once and expire in 5 minutes. Paired sessions last 30 days and can be revoked.',
-              )}
-            </p>
-            <button
-              className="primary-button"
-              disabled={busy}
-              onClick={() => {
-                void request<{ code: string; expiresAt: number }>('remote.pair').then(setPair).catch(onError);
-              }}
-            >
-              {t('生成配对码', 'Create pairing code')}
-            </button>
-          </div>
-          {pair && (
-            <div className="remote-pair-code">
-              <code>{pair.code}</code>
+          </p>
+        )}
+        {status?.setup.actionUrl && (
+          <button className="primary-button" onClick={() => open(status.setup.actionUrl!)}>
+            <ExternalLink size={15} />
+            {stage === 'https'
+              ? t('启用 HTTPS', 'Enable HTTPS')
+              : stage === 'approval'
+                ? t('打开设备管理', 'Open device approval')
+                : t('登录 Tailscale', 'Sign in to Tailscale')}
+          </button>
+        )}
+        {active && ['login', 'https', 'approval'].includes(stage) && (
+          <button className="text-button" disabled={busy} onClick={() => void action('remote.retry')}>
+            {t('重新获取连接', 'Retry connection setup')}
+          </button>
+        )}
+        {stage === 'error' && (
+          <p className="remote-setup-error" role="alert">
+            {status?.setup.error}
+          </p>
+        )}
+        {!active && !ready && (
+          <button
+            className="primary-button"
+            disabled={busy || !status}
+            onClick={() => {
+              pairRequested.current = false;
+              setPair(undefined);
+              void action('remote.setup');
+            }}
+          >
+            <RefreshCw size={15} />
+            {stage === 'error' || status?.enabled
+              ? t('重新设置连接', 'Retry setup')
+              : t('一键设置手机连接', 'Set up phone access')}
+          </button>
+        )}
+        {ready && (
+          <label className="field-label">
+            {t('手机连接地址', 'Phone connection address')}
+            <div className="remote-copy-field">
+              <input
+                readOnly
+                value={status?.publicOrigin ?? ''}
+                aria-label={t('手机连接地址', 'Phone connection address')}
+              />
               <button
                 className="icon-button"
-                aria-label={t('复制配对码', 'Copy pairing code')}
-                onClick={() => void window.codexDesk?.copyText(pair.code).catch(onError)}
+                aria-label={t('复制地址', 'Copy address')}
+                onClick={() => void window.codexDesk?.copyText(status!.publicOrigin).catch(onError)}
               >
                 <Copy size={16} />
               </button>
-              <small>
-                {t('到期时间：', 'Expires: ')}
-                {new Date(pair.expiresAt).toLocaleTimeString()}
-              </small>
             </div>
-          )}
+          </label>
+        )}
+      </div>
+      <div className="remote-setup-card">
+        <div className="remote-step-heading">
+          <span className="remote-step-number">2</span>
+          <strong>{t('在安卓手机上连接', 'Connect from Android')}</strong>
+        </div>
+        <ol className="remote-phone-steps">
+          <li>
+            {t(
+              '安装 Codex Desk 安卓版，在 App 中点击「安装 / 打开 Tailscale」。',
+              'Install Codex Desk for Android, then tap Install / Open Tailscale in the app.',
+            )}
+          </li>
+          <li>
+            {t(
+              '登录相同账号，打开 Tailscale，并接受安卓的 VPN 连接提示。',
+              'Use the same account, switch on Tailscale and accept Android’s VPN connection prompt.',
+            )}
+          </li>
+          <li>
+            {t(
+              '回到安卓 Desk，填入上面的地址和下面的配对码。',
+              'Return to Android Desk and enter the address above and pairing code below.',
+            )}
+          </li>
+        </ol>
+        <button
+          className="secondary-button"
+          onClick={() => open('https://github.com/moristeven477-ship-it/codex-desk/releases/latest')}
+        >
+          <Download size={15} />
+          {t('下载安卓 App', 'Get Android app')}
+        </button>
+        {ready && (
+          <>
+            <div className="remote-pair-actions">
+              <button
+                className="secondary-button"
+                disabled={busy}
+                onClick={() => void createPair().catch(onError)}
+              >
+                {pair ? t('刷新配对码', 'Refresh pairing code') : t('生成配对码', 'Create pairing code')}
+              </button>
+              <span className="muted">{t('一次有效 · 5 分钟过期', 'Single use · Expires in 5 minutes')}</span>
+            </div>
+            {pair && (
+              <div className={`remote-pair-code ${expired ? 'is-expired' : ''}`}>
+                {expired ? (
+                  <span>{t('配对码已过期，请刷新。', 'Pairing code expired. Generate a new one.')}</span>
+                ) : (
+                  <>
+                    <code>{pair.code}</code>
+                    <button
+                      className="icon-button"
+                      aria-label={t('复制配对码', 'Copy pairing code')}
+                      onClick={() => void window.codexDesk?.copyText(pair.code).catch(onError)}
+                    >
+                      <Copy size={16} />
+                    </button>
+                  </>
+                )}
+                {!expired && (
+                  <small>
+                    {t('到期时间：', 'Expires: ')}
+                    {new Date(pair.expiresAt).toLocaleTimeString()}
+                  </small>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      {status?.enabled && (
+        <>
           <h4>{t('已配对设备', 'Paired devices')}</h4>
           {status.devices.map((device) => (
             <div className="remote-device" key={device.id}>
@@ -151,22 +282,35 @@ export function RemoteSettings({ onError }: { onError: (error: unknown) => void 
             </div>
           ))}
           {!status.devices.length && <p className="muted">{t('尚未配对手机。', 'No paired devices yet.')}</p>}
+          <p>
+            {t(
+              '保持电脑开机。关闭 Desk 窗口后连接会在托盘继续运行；从托盘退出会断开手机。',
+              'Keep your computer awake. Closing Desk keeps the connection running in the tray; quitting from the tray disconnects your phone.',
+            )}
+          </p>
         </>
       )}
       <div className="dialog-actions">
-        <button className="text-button" onClick={() => void refresh().catch(onError)}>
-          <RefreshCw size={14} />
-          {t('刷新', 'Refresh')}
-        </button>
+        {status?.enabled && (
+          <button
+            className="text-button"
+            disabled={busy}
+            onClick={() => {
+              setPair(undefined);
+              pairRequested.current = false;
+              void action('remote.stop');
+            }}
+          >
+            {t('关闭连接', 'Disable access')}
+          </button>
+        )}
         <button
           className="text-button"
           onClick={() =>
-            void window.codexDesk
-              ?.openExternal('https://github.com/moristeven477-ship-it/codex-desk/blob/main/docs/ANDROID.md')
-              .catch(onError)
+            open('https://github.com/moristeven477-ship-it/codex-desk/blob/main/docs/ANDROID.md')
           }
         >
-          {t('安卓安装与连接说明', 'Android setup guide')}
+          {t('连接帮助', 'Connection help')}
         </button>
       </div>
     </div>

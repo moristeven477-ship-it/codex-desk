@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1
+
+- Set up phone access entirely from desktop Settings: download and verify Tailscale, install a private user service when needed, open account login, and automatically configure the HTTPS address.
+- Continue automatically after login, device approval and HTTPS enablement. Show progress, retry actions, an automatically generated pairing code and paired-device status.
+- Reuse an existing usable Tailscale connection; fall back to a private endpoint when system permissions or an occupied port prevent configuration. Preserve existing VPN preferences and other services.
+- Guide Android users through opening/installing Tailscale, enabling its VPN connection and pairing with the computer, in English and Simplified Chinese.
+
 ## 0.3.0
 
 - Add an Android client and optional Tailscale HTTPS gateway to control the same computer-side Codex CLI sessions.

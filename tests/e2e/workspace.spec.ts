@@ -900,3 +900,87 @@ test('CLI permission changes are inherited until an explicit Desk change; comple
   await expect(page.locator('.completion-toast')).toBeVisible();
   await expect(page.locator('.completion-toast')).toHaveCount(0, { timeout: 10_000 });
 });
+
+test('phone setup shows progress and login actions, continues to pairing, and retries errors in Chinese', async ({
+  page,
+}) => {
+  await page.evaluate(() => {
+    const state = {
+      enabled: false,
+      port: 43125,
+      publicOrigin: '',
+      localOrigin: 'http://127.0.0.1:43125',
+      devices: [],
+      tailscale: { installed: false, state: 'Unavailable', url: '' },
+      setup: { stage: 'idle', active: false } as import('../../src/shared/remote').PhoneSetup,
+    };
+    const test = { state, calls: [] as string[], links: [] as string[], pairs: 0 };
+    (window as unknown as { phoneTest: typeof test }).phoneTest = test;
+    const original = window.codexDesk!.request;
+    window.codexDesk!.request = (async (method: string, params: JsonObject) => {
+      if (!method.startsWith('remote.')) return original(method, params);
+      test.calls.push(method);
+      if (method === 'remote.status') return state;
+      if (method === 'remote.setup' || method === 'remote.retry') {
+        state.enabled = true;
+        state.setup = { stage: 'downloading', active: true, progress: 40 };
+      } else if (method === 'remote.pair') {
+        test.pairs++;
+        return { code: 'SYNTHETIC-PAIR-CODE', expiresAt: Date.now() + 300_000 };
+      } else if (method === 'remote.stop') {
+        state.enabled = false;
+        state.setup = { stage: 'idle', active: false };
+      }
+      return {};
+    }) as typeof original;
+    window.codexDesk!.openExternal = async (url) => {
+      test.links.push(url);
+    };
+  });
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByRole('button', { name: '手机连接', exact: true }).click();
+  await page.getByRole('button', { name: '一键设置手机连接', exact: true }).click();
+  await expect(page.getByRole('progressbar', { name: '下载进度' })).toHaveAttribute('value', '40');
+  await page.evaluate(() => {
+    const test = (
+      window as unknown as { phoneTest: { state: import('../../src/shared/remote').PhoneStatus } }
+    ).phoneTest;
+    test.state.setup = {
+      stage: 'login',
+      active: true,
+      actionUrl: 'https://login.tailscale.com/a/synthetic-ui',
+    };
+  });
+  await page.getByRole('button', { name: '登录 Tailscale', exact: true }).click();
+  expect(
+    await page.evaluate(() => (window as unknown as { phoneTest: { links: string[] } }).phoneTest.links),
+  ).toEqual(['https://login.tailscale.com/a/synthetic-ui']);
+  await expect(page.locator('.remote-pair-code')).toHaveCount(0);
+  await page.evaluate(() => {
+    const test = (
+      window as unknown as { phoneTest: { state: import('../../src/shared/remote').PhoneStatus } }
+    ).phoneTest;
+    test.state.setup = { stage: 'error', active: false, error: '网络连接中断，请重试。' };
+  });
+  await expect(page.getByRole('alert')).toContainText('网络连接中断');
+  await page.getByRole('button', { name: '重新设置连接', exact: true }).click();
+  await page.evaluate(() => {
+    const test = (
+      window as unknown as { phoneTest: { state: import('../../src/shared/remote').PhoneStatus } }
+    ).phoneTest;
+    test.state.publicOrigin = 'https://desk.tailtest.ts.net:8443';
+    test.state.tailscale = { installed: true, state: 'Running', url: test.state.publicOrigin };
+    test.state.setup = { stage: 'ready', active: false };
+  });
+  await expect(page.getByRole('textbox', { name: '手机连接地址', exact: true })).toHaveValue(
+    'https://desk.tailtest.ts.net:8443',
+  );
+  await expect(page.locator('.remote-pair-code code')).toHaveText('SYNTHETIC-PAIR-CODE');
+  await page.screenshot({ path: 'test-results/phone-setup-zh.png', animations: 'disabled' });
+  expect(
+    await page.evaluate(() => (window as unknown as { phoneTest: { pairs: number } }).phoneTest.pairs),
+  ).toBe(1);
+  await page.getByRole('button', { name: '关闭连接', exact: true }).click();
+  await expect(page.getByRole('button', { name: '一键设置手机连接', exact: true })).toBeVisible();
+  await expect(page.locator('.remote-pair-code')).toHaveCount(0);
+});

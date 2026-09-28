@@ -7,9 +7,72 @@
   line-height: 1.65;
   color: var(--secondary);
 }
-.remote-setup-step {
-  padding: 16px 0;
-  border-top: 1px solid var(--border);
+.remote-setup-card {
+  padding: 18px;
+  margin: 18px 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--raised);
+}
+.remote-setup-card.is-ready {
+  border-color: var(--accent);
+}
+.remote-step-heading,
+.remote-pair-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.remote-step-number {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.remote-phone-steps {
+  padding-left: 22px;
+  color: var(--secondary);
+  line-height: 1.8;
+}
+.remote-phone-steps li {
+  padding: 4px 0 4px 3px;
+}
+.remote-pair-actions {
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+.remote-pair-actions .muted {
+  font-size: 0.85rem;
+}
+.remote-setup-card progress {
+  width: 100%;
+  margin-bottom: 12px;
+  accent-color: var(--accent);
+}
+.remote-settings .remote-setup-error {
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+.remote-spinner {
+  margin-left: auto;
+  animation: remote-spin 1s linear infinite;
+}
+@keyframes remote-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .remote-spinner {
+    animation: none;
+  }
+}
+.remote-pair-code.is-expired {
+  color: var(--muted);
 }
 .remote-copy-field,
 .remote-device {

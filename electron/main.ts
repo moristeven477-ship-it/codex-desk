@@ -19,11 +19,12 @@ import { importImages } from './images';
 import { CompletionTracker } from '../src/shared/completion';
 import { BackgroundTerminal } from './background-terminal';
 import { RemoteGateway } from './remote';
-import { tailscaleStatus, serveDesk } from './tailscale';
+import { TailscaleSetup, createTailscaleDriver } from './tailscale';
 
 let window: BrowserWindow | null = null;
 let service: DeskService;
 let remote: RemoteGateway;
+const phoneSetup = new TailscaleSetup(createTailscaleDriver(process.env.CODEX_DESK_TAILSCALE_HOME));
 let tray: Tray | undefined;
 let quitting = false,
   quitComplete = false;
@@ -85,6 +86,8 @@ else {
           importImages(path.join(app.getPath('userData'), 'attachments'), uploads, t),
       });
       await remote.init();
+      if (remote.status.enabled)
+        phoneSetup.start(remote.status.port, remote.status.publicOrigin, (url) => remote.setOrigin(url));
       // Permit headless integration tests to select a fake CLI without touching user preferences.
       if (!app.isPackaged && process.env.CODEX_DESK_TEST_BINARY)
         service.store.state.settings.binaryPath = process.env.CODEX_DESK_TEST_BINARY;
@@ -176,15 +179,31 @@ else {
           if (method.startsWith('remote.')) {
             const args = params as Record<string, unknown> | undefined;
             if (method === 'remote.status')
-              return { ok: true, value: { ...remote.status, tailscale: await tailscaleStatus() } };
+              return {
+                ok: true,
+                value: {
+                  ...remote.status,
+                  tailscale: await phoneSetup.status(remote.status.publicOrigin),
+                  setup: phoneSetup.state,
+                },
+              };
             if (method === 'remote.start') return { ok: true, value: await remote.start() };
-            if (method === 'remote.stop') return { ok: true, value: await remote.stop() };
+            if (method === 'remote.stop') {
+              await phoneSetup.cancel();
+              return { ok: true, value: await remote.stop() };
+            }
             if (method === 'remote.pair') return { ok: true, value: remote.createPairing() };
             if (method === 'remote.revoke' && typeof args?.id === 'string')
               return { ok: true, value: await remote.revoke(args.id) };
-            if (method === 'remote.serve') {
-              if (!remote.status.enabled) throw new Error('Enable phone access first.');
-              return { ok: true, value: await remote.setOrigin(await serveDesk(remote.status.port)) };
+            if (method === 'remote.setup' || method === 'remote.serve' || method === 'remote.retry') {
+              if (method === 'remote.retry') await phoneSetup.cancel();
+              await remote.start();
+              return {
+                ok: true,
+                value: phoneSetup.start(remote.status.port, remote.status.publicOrigin, (url) =>
+                  remote.setOrigin(url),
+                ),
+              };
             }
             throw new Error('Unknown remote control operation.');
           }
@@ -307,6 +326,7 @@ else {
     if (!service || quitComplete) return;
     event.preventDefault();
     void (async () => {
+      await phoneSetup.cancel();
       await remote?.stop(false);
       await service.codex.stop();
       tray?.destroy();

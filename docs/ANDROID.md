@@ -10,11 +10,11 @@ Codex Desk for Android controls the Codex CLI running on your Ubuntu computer. I
 
 ### Install and pair
 
-1. Install **Codex Desk 0.3.0 or later** on Ubuntu and `codex-desk-0.3.0-android.apk` from [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest) on Android 8.0 or later. Allow your browser/file manager to install this APK when Android asks. Keep Android System WebView or Chrome updated.
-2. Install [Tailscale on Android](https://tailscale.com/download/android) and [Ubuntu](https://tailscale.com/download/linux). Sign both into the same tailnet, and turn on Tailscale on the phone.
-3. In desktop **Settings → Phone access**, choose **Enable access**, then **Configure Tailscale address**. On first use, Tailscale may provide a link to enable HTTPS for your tailnet. Open that link, enable HTTPS, then retry the button. A system installation may require its administrator to grant this user Tailscale operator access: `sudo tailscale set --operator="$USER"`.
-4. Copy the resulting `https://computer.tailXXXX.ts.net:8443` address into the Android app. Use the complete HTTPS address, including `:8443`.
-5. On the computer, select **Create pairing code**. Enter that code and a device name on the phone. Codes expire after five minutes and work once. Paired sessions last 30 days; generate a new code to pair again when needed.
+1. Install **Codex Desk 0.3.1 or later** on Ubuntu and the Android APK from [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest) on Android 8.0 or later. Allow your browser/file manager to install the APK when Android asks. Keep Android System WebView or Chrome updated.
+2. On the computer, open **Settings → Phone access → Set up phone access**. Desk downloads and verifies Tailscale if needed, starts its own connection without root privileges, and displays setup progress. A usable existing Tailscale connection is reused.
+3. Click **Sign in to Tailscale** in Desk and complete the official browser login with the account you will use on your phone. If shown, click **Enable HTTPS** (or **Open device approval**) and complete that Tailscale page. **Desk continues automatically** and shows the computer address and a pairing code. No terminal commands or manual port configuration are needed. Use **Retry connection setup** if an authorization link expires.
+4. Open Codex Desk on Android. Its first step offers **Install Tailscale** or **Open Tailscale**. Sign in with the same account, switch the connection on, accept Android’s VPN prompt, and return to Desk. Account sign-in and Android’s VPN consent remain actions you complete yourself.
+5. Paste the complete `https://computer.tailXXXX.ts.net:8443` address into Android Desk, including `:8443`. Connect, then enter the pairing code and a device name. Codes expire after five minutes and work once; use **Refresh pairing code** when needed. Paired sessions last 30 days and can be revoked in desktop settings.
 
 Closing the desktop window leaves Desk in the system tray while phone access is enabled. The computer must remain powered on, awake and logged in, with Desk running. **Quit** in the tray disconnects the phone; it does not terminate the shared Codex server or running tasks. Desk is not automatically started after reboot: launch it again after signing in.
 
@@ -31,17 +31,15 @@ Tailscale identifies each device independently of its Wi-Fi/cellular address. Ch
 - Task-completion banners appear while the mobile interface is active. Android background push notifications are not included. Suspended WebViews reconnect when brought back to the foreground.
 - Revoke a device in desktop **Phone access**, or choose **Unpair this phone** in mobile settings. This immediately ends that device's remote access and its embedded terminal connection, without stopping its running Codex task.
 
-### Optional rootless Ubuntu setup
+### Built-in Ubuntu setup
 
-If you cannot install system packages, the repository includes a helper for Ubuntu x86-64 with Node.js 22:
+![Built-in phone setup — synthetic example](screenshots/phone-setup.png)
 
-```bash
-node scripts/setup-tailscale-user.mjs
-```
+The desktop setup button handles installation on Ubuntu x86-64. It verifies the pinned official Tailscale static distribution with SHA-256 and starts a private userspace-networking daemon as `codex-desk-tailscale.service` under the current user’s systemd. It needs no root privileges, adds no system VPN interface, and does not change system DNS. The private endpoint is for inbound phone access to Desk. If an existing system connection can serve Desk, it is reused; permissions or port conflicts cause Desk to use its own endpoint instead of changing that connection’s VPN preferences.
 
-It downloads a checksum-verified official static Tailscale distribution and runs a private userspace-networking daemon as `codex-desk-tailscale.service` under the current user's systemd. It uses no root privileges, adds no system VPN interface, and does not change system DNS. Follow its login link, then configure the address in Desk. This private endpoint is intended for inbound phone access to Desk, not as a system-wide VPN.
+Data: `~/.local/share/codex-desk/tailscale/`. Logs: `journalctl --user -u codex-desk-tailscale.service`. **Disable access** closes Desk’s gateway and cancels any setup in progress. It keeps your Tailscale login so the next setup can reuse it. For full removal of the private service, run `systemctl --user disable --now codex-desk-tailscale.service` before removing its files. This does not control a system Tailscale installation.
 
-Data: `~/.local/share/codex-desk/tailscale/`. Logs: `journalctl --user -u codex-desk-tailscale.service`. Stop/remove its autostart with `systemctl --user disable --now codex-desk-tailscale.service`. If switching to a system Tailscale installation, disable this helper and configure the desktop address again.
+Source contributors can still use `node scripts/setup-tailscale-user.mjs` after `npm ci`; it shares the desktop installer. Tests may set `CODEX_DESK_TAILSCALE_HOME` to an isolated home directory for this endpoint. The distributed app uses your normal home directory by default.
 
 ### Connection and trust
 
@@ -68,11 +66,11 @@ Install `app/build/outputs/apk/debug/app-debug.apk` for development. `assembleRe
 
 ### 安装和配对
 
-1. 从 [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest) 安装电脑端 0.3.0 或更新版本，以及 `codex-desk-0.3.0-android.apk`。支持 Android 8.0 起；按安卓提示允许安装此 APK，并保持系统 WebView / Chrome 更新。
-2. [手机](https://tailscale.com/download/android)和[电脑](https://tailscale.com/download/linux)安装 Tailscale，登录同一个网络，手机打开 Tailscale。
-3. 电脑端「设置 → 手机连接 → 启用连接 → 配置 Tailscale 地址」。首次可能需要按 Tailscale 给出的链接启用 HTTPS，再点击配置。系统安装的 Tailscale 若提示权限不足，管理员可运行 `sudo tailscale set --operator="$USER"`。
-4. 将电脑显示的完整 `https://电脑名.tailXXXX.ts.net:8443` 填入安卓 App，保留 `:8443`。
-5. 电脑端点击「生成配对码」，在手机输入配对码和设备名称。配对码一次有效、五分钟过期；配对登录保留 30 天，可在电脑端随时撤销。
+1. 从 [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest) 安装电脑端 **0.3.1 或更新版本**和安卓 APK。支持 Android 8.0 起；按安卓提示允许安装，并保持系统 WebView / Chrome 更新。
+2. 电脑端打开「**设置 → 手机连接 → 一键设置手机连接**」。Desk 会自动下载校验、安装和启动 Tailscale；已有可用连接时会复用，无需终端命令或管理员密码。
+3. 在 Desk 点击「**登录 Tailscale**」，到官方浏览器页面使用与手机相同的账号登录。若出现「**启用 HTTPS**」或设备审批按钮，点开完成后，**Desk 会自动继续**，显示连接地址并生成配对码。链接过期可点「重新获取连接」。
+4. 打开安卓 Desk，第一步可直接「**安装 Tailscale**」或「**打开 Tailscale**」。登录相同账号，打开连接并接受安卓 VPN 提示，再回到 Desk。账号登录和安卓系统 VPN 授权仍需本人操作。
+5. 填入电脑显示的完整 `https://电脑名.tailXXXX.ts.net:8443`，点击连接后输入配对码和设备名称。配对码五分钟内一次有效，过期在电脑点「刷新配对码」。配对登录保留 30 天，可在电脑随时撤销。
 
 手机切换 Wi-Fi / 流量、外网 IP 改变都不需要重新设置电脑地址。使用 Tailscale 提供的固定设备域名和 HTTPS，电脑不需要公网端口映射。
 
@@ -88,6 +86,6 @@ Install `app/build/outputs/apk/debug/app-debug.apk` for development. `assembleRe
 - App 活跃时显示顶部完成提示；暂未实现 Android 后台推送。返回 App 后会重连并更新历史。
 - 在电脑「手机连接」撤销设备，或手机设置中「取消手机配对」，可结束访问；运行中的 Codex 任务仍保留。
 
-没有系统安装权限时，可在仓库运行 `node scripts/setup-tailscale-user.mjs`。它为 Ubuntu x86-64 安装校验过的官方 Tailscale 到用户目录，使用用户级 systemd 和 userspace networking，不修改系统 DNS。完成输出的登录链接，再到 Desk 配置地址。详情见上面的英文说明。
+电脑端的一键设置已内置免管理员安装：校验官方 Tailscale 下载后放入用户目录，使用用户级 systemd 和 userspace networking。关闭手机连接会停止 Desk 网关和当前设置流程，保留登录以便下次连接。已有系统 Tailscale 的 VPN 设置和其他服务会保留；权限不足或端口已占用时，Desk 使用独立连接。详细安装路径与卸载方式见上面的英文说明。
 
 连接失败时依次确认 Tailscale 已打开、双方属于同一网络、电脑未休眠、Desk 已运行、地址含 HTTPS 和 `:8443`。首次需启用 Tailscale HTTPS，网络 ACL 需允许手机访问电脑 TCP 8443。证书错误不能跳过，应修正 HTTPS 配置或设备时间。

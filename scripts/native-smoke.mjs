@@ -1,5 +1,5 @@
 import { _electron as electron, chromium, expect } from '@playwright/test';
-import { mkdtemp, mkdir, writeFile, readFile, readdir, stat, chmod, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, stat, chmod, rm, copyFile } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { sharedFixture } from '../tests/fixtures/shared-server.mjs';
@@ -11,6 +11,13 @@ await writeFile(path.join(project, 'README.md'), '# Atlas\nSynthetic desktop smo
 const binary = path.resolve('tests/fixtures/fake-codex.mjs');
 await chmod(binary, 0o755);
 const shared = await sharedFixture(directory, project);
+const tailscaleHome = path.join(directory, 'tailscale-home');
+const tailscaleDirectory = path.join(tailscaleHome, '.local/share/codex-desk/tailscale');
+const tailscaleState = path.join(directory, 'tailscale-fixture.json');
+await mkdir(tailscaleDirectory, { recursive: true });
+await copyFile(path.resolve('tests/fixtures/fake-tailscale.mjs'), path.join(tailscaleDirectory, 'tailscale'));
+await chmod(path.join(tailscaleDirectory, 'tailscale'), 0o755);
+await writeFile(tailscaleState, '{}');
 await writeFile(
   path.join(directory, 'state.json'),
   JSON.stringify({
@@ -37,12 +44,19 @@ try {
       CODEX_DESK_USER_DATA: directory,
       CODEX_DESK_FIXTURE_ROOT: project,
       CODEX_DESK_REMOTE_PORT: '0',
+      CODEX_DESK_TAILSCALE_HOME: tailscaleHome,
+      CODEX_DESK_TAILSCALE_FIXTURE: tailscaleState,
+      PATH: tailscaleDirectory + path.delimiter + process.env.PATH,
     },
   });
   const page = await desktop.firstWindow();
   // Capture notifications in this test process without notifying the user's desktop.
-  await desktop.evaluate(({ Notification }) => {
+  await desktop.evaluate(({ Notification, shell }) => {
     globalThis.__deskNotifications = [];
+    globalThis.__deskExternal = [];
+    shell.openExternal = async (url) => {
+      globalThis.__deskExternal.push(url);
+    };
     Notification.isSupported = () => true;
     Notification.prototype.show = function () {
       globalThis.__deskNotifications.push(this);
@@ -250,9 +264,23 @@ try {
   );
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Phone access', exact: true }).click();
-  await page.getByRole('button', { name: 'Enable access', exact: true }).click();
+  await page.getByRole('button', { name: 'Set up phone access', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Disable access', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Create pairing code', exact: true }).click();
+  await page.getByRole('button', { name: 'Sign in to Tailscale', exact: true }).click();
+  expect(await desktop.evaluate(() => globalThis.__deskExternal.at(-1))).toBe(
+    'https://login.tailscale.com/a/synthetic-native',
+  );
+  await writeFile(tailscaleState, JSON.stringify({ loggedIn: true }));
+  await page.getByRole('button', { name: 'Enable HTTPS', exact: true }).click();
+  expect(await desktop.evaluate(() => globalThis.__deskExternal.at(-1))).toContain(
+    'https://login.tailscale.com/f/serve',
+  );
+  await writeFile(tailscaleState, JSON.stringify({ loggedIn: true, https: true }));
+  await expect(page.getByRole('textbox', { name: 'Phone connection address', exact: true })).toHaveValue(
+    'https://desk.tailtest.ts.net:8443',
+  );
+  await expect(page.locator('.remote-pair-code code')).toBeVisible();
+  await page.screenshot({ path: 'test-results/native-phone-setup.png', animations: 'disabled' });
   const code = await page.locator('.remote-pair-code code').innerText();
   const gateway = await page.evaluate(() => window.codexDesk.request('remote.status'));
   phoneBrowser = await chromium.launch({
@@ -305,6 +333,8 @@ try {
   console.log(
     JSON.stringify({
       native: 'passed',
+      phoneSetup:
+        'in-app login, automatic HTTPS continuation, automatic pairing, isolated Tailscale executable fixture',
       transport: 'Electron IPC + shared Unix WebSocket',
       embeddedCliPty: 'passed',
       backgroundTerminal: 'native GNOME tab, same PID reused',
