@@ -16,7 +16,16 @@ export function useGoalLabel(status?: GoalStatus) {
   };
   return status ? labels[status] : t('设置目标', 'Set a goal');
 }
-export function GoalBadge({ goal, onClick }: { goal: ThreadGoal; onClick: () => void }) {
+export function GoalBadge({
+  goal,
+  onClick,
+  compact = false,
+}: {
+  goal: ThreadGoal;
+  onClick: () => void;
+  compact?: boolean;
+}) {
+  const t = useT();
   const label = useGoalLabel(goal.status);
   return (
     <button
@@ -26,7 +35,7 @@ export function GoalBadge({ goal, onClick }: { goal: ThreadGoal; onClick: () => 
       aria-label={label}
     >
       {goal.status === 'complete' ? <Check size={14} /> : <Target size={14} />}
-      <span>{label}</span>
+      <span>{compact ? t('目标', 'Goal') : label}</span>
       {goal.status === 'active' && <i />}
     </button>
   );

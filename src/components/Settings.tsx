@@ -205,6 +205,12 @@ export function Settings({
                   {t('退出并取消此设备配对', 'Sign out and unpair this device')}
                 </button>
               )}
+              {remote && /CodexDeskAndroid\//.test(navigator.userAgent) && (
+                <a className="text-button native-connection-link" href="/_desk/connection">
+                  <Smartphone size={16} />
+                  {t('电脑连接设置', 'Computer connection settings')}
+                </a>
+              )}
             </>
           ) : (
             <>

@@ -41,6 +41,10 @@ _Screenshots show a synthetic test workspace. The application uses your real loc
 
 Install the Android APK and connect through **Tailscale** to this computer. The phone shares CLI conversations, settings, steering, approvals, goals and the embedded CLI. Changing Wi-Fi/cellular IP addresses does not require reconfiguration. Choose **Settings → Phone access → Set up phone access** on Ubuntu: Desk installs Tailscale when needed and configures the address automatically after you sign in. The Android APK includes the official Tailscale engine. Sign in inside Desk, then enter the address and one-time pairing code. No separate Tailscale app or system VPN is required. [Installation and pairing guide](docs/ANDROID.md).
 
+The phone layout uses one conversation header and a compact composer that grows with your draft. Tap **+** for images, all slash commands and Plan; tap the model for Model / Thinking / Access and Fast. **⋯ → Settings** contains the smooth font slider, language and theme. Android Back closes sheets before leaving the chat. Update both the desktop and APK to **0.5.0** for the integrated header and connection menu.
+
+<img src="docs/screenshots/mobile-home-dark.png" width="260" alt="Compact phone home screen" /> <img src="docs/screenshots/mobile-session-sheet.png" width="260" alt="Phone model and session settings" />
+
 ## Install on Ubuntu
 
 **Release target: Ubuntu 24.04 x86-64.** Other distributions and CPU architectures have not been validated.
@@ -54,14 +58,14 @@ npm install -g @openai/codex
 codex login
 ```
 
-If Codex already works in your terminal, keep that installation. Codex Desk discovers common npm, nvm, Volta, and local binary locations. You can also choose an absolute executable path in **Settings → Codex CLI**. Tested against **codex-cli 0.157.1**; older/newer protocol versions may differ.
+If Codex already works in your terminal, keep that installation. Codex Desk discovers common npm, nvm, Volta, and local binary locations. You can also choose an absolute executable path in **Settings → Codex CLI**. Tested against **codex-cli 0.154.0 and 0.158.0**; older/newer protocol versions may differ.
 
 ### 2. Install the desktop application
 
 Download the `.deb` from [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest), then run:
 
 ```bash
-sudo apt install ./codex-desk-0.4.1-amd64.deb
+sudo apt install ./codex-desk-0.5.0-amd64.deb
 ```
 
 Launch **Codex Desk** from Ubuntu's application menu, or run `codex-desk`.
@@ -71,14 +75,14 @@ The package includes the Electron runtime; Node.js is needed separately only for
 ### Portable AppImage
 
 ```bash
-chmod +x codex-desk-0.4.1-x86_64.AppImage
-./codex-desk-0.4.1-x86_64.AppImage
+chmod +x codex-desk-0.5.0-x86_64.AppImage
+./codex-desk-0.5.0-x86_64.AppImage
 ```
 
 If FUSE is unavailable, run without mounting the AppImage:
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.4.1-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.5.0-x86_64.AppImage
 ```
 
 The `.deb` is recommended on Ubuntu 24.04: its installer includes Electron's Ubuntu AppArmor integration. Do not disable Chromium's sandbox to work around an installation problem. See [Troubleshooting](docs/TROUBLESHOOTING.md).

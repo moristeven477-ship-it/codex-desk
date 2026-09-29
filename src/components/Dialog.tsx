@@ -1,54 +1,26 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useId, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { useT } from '../lib/i18n';
+import { useModalFocus } from '../lib/useModalFocus';
 export function Dialog({
   title,
   onClose,
   children,
   wide = false,
   escapeCloses = true,
+  className = '',
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
   escapeCloses?: boolean;
+  className?: string;
 }) {
   const t = useT(),
     ref = useRef<HTMLDivElement>(null),
     id = useId();
-  const close = useRef(onClose);
-  close.current = onClose;
-  useEffect(() => {
-    const original = document.activeElement as HTMLElement;
-    const selector = 'button, input, select, textarea, a[href], [tabindex="0"]';
-    const nodes = () =>
-      [...(ref.current?.querySelectorAll<HTMLElement>(selector) ?? [])].filter(
-        (e) => !e.hasAttribute('disabled'),
-      );
-    nodes()[0]?.focus();
-    function key(event: KeyboardEvent) {
-      if (event.defaultPrevented) return;
-      if (event.key === 'Escape' && escapeCloses) close.current();
-      if (event.key === 'Tab') {
-        const list = nodes(),
-          first = list[0],
-          last = list.at(-1);
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last?.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first?.focus();
-        }
-      }
-    }
-    document.addEventListener('keydown', key);
-    return () => {
-      document.removeEventListener('keydown', key);
-      original?.focus();
-    };
-  }, [escapeCloses]);
+  useModalFocus(ref, onClose, true, escapeCloses);
   return (
     <div
       className="dialog-backdrop"
@@ -61,7 +33,7 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby={id}
-        className={`dialog ${wide ? 'wide' : ''}`}
+        className={`dialog ${wide ? 'wide' : ''} ${className}`}
       >
         <header>
           <h2 id={id}>{title}</h2>

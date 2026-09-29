@@ -300,6 +300,7 @@ try {
   expect(await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible())).toBe(
     false,
   );
+  await phone.getByRole('button', { name: 'Add and tools', exact: true }).click();
   const picker = phone.waitForEvent('filechooser');
   await phone.getByRole('button', { name: 'Attach images', exact: true }).click();
   await (

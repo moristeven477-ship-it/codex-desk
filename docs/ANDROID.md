@@ -22,6 +22,13 @@ Tailscale identifies each device independently of its Wi-Fi/cellular address. Ch
 
 ### Using the phone
 
+With desktop and Android **0.5.0**, the mobile shell has one header and a composer starting at one line. It expands for longer drafts and scrolls when the keyboard leaves limited space. Normal Enter inserts a newline; tap Send or press Ctrl/Command+Enter to submit. Slash-command Enter still runs the command.
+
+- **+** opens image attachment, the complete slash menu and Plan mode.
+- **Model name** opens Model / Thinking / Access tabs and Fast; the adjacent permission label opens Access directly. Opening a sheet changes no CLI settings.
+- **⋯ → Settings** opens font size, language and appearance; **⋯ → Computer connection settings** opens the native Tailscale/address screen. The pairing page also links to connection settings. Older desktop servers retain the native connection toolbar.
+- Tap outside, Close, or Android Back to dismiss a sheet. The header contains history, new conversation and the current goal. Stop and Steer remain separate while a task runs.
+
 - Send tasks, choose a startup mode, change model/effort/Fast, interrupt, or steer a running task. CLI settings win until you explicitly change a setting in Desk or Android.
 - Pending steering remains visible. After a network change, the app reloads authoritative thread history. It never automatically resends submitted prompts or steering. If delivery is uncertain, inspect the conversation before sending again.
 - Open history in the left drawer. Project paths refer to folders **on the computer**; enter their absolute paths when adding a project.
@@ -99,6 +106,13 @@ Install `app/build/outputs/apk/debug/app-debug.apk` for development. `assembleRe
 启用手机连接后，关闭 Desk 窗口会留在托盘运行；托盘「退出」会断开手机，但不终止共享 Codex 任务。电脑需要保持开机、唤醒、已登录且 Desk 在运行；电脑重启登录后需重新打开 Desk。
 
 ### 手机操作
+
+电脑端和 APK 更新至 **0.5.0** 后，页面只保留一层页头。输入框从一行开始，随文字增长；长草稿在框内滚动。手机 Enter 换行，点击发送或 Ctrl/Command+Enter 提交；`/` 命令仍可 Enter 执行。
+
+- **＋** 打开图片、完整 `/` 命令和计划模式。
+- **模型名称** 打开模型 / 思考 / 权限与 Fast；旁边的权限文字直接打开权限页。仅查看面板不会改写 CLI 设置。
+- **⋯ → 设置** 调整字体、语言和主题；**⋯ → 电脑连接设置** 返回原生 Tailscale / 地址页面，配对页也保留此入口。连接旧版电脑端时仍显示原生连接栏。
+- 点击面板外、关闭按钮或安卓返回键关闭面板。顶部可打开历史、新建会话和查看 goal；任务运行时插话与停止分别可见。
 
 - 支持新会话启动模式、历史消息、模型/推理/Fast、停止、插话、审批、goal、`/` 菜单、文件/Git 查看及真实 CLI 终端。
 - 一切以 CLI 设置为优先，只有主动修改时才覆盖。手机切换会话不抢占桌面当前页面，也不自动打开 Ubuntu Terminal 标签页。

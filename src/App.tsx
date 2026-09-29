@@ -26,6 +26,8 @@ import {
   Settings2,
   Sparkles,
   Terminal,
+  Target,
+  SlidersHorizontal,
   X,
 } from 'lucide-react';
 import { LocaleContext, useT } from './lib/i18n';
@@ -44,6 +46,8 @@ import { CliTerminal } from './components/CliTerminal';
 import { CompletionToast } from './components/CompletionToast';
 import { StartupModePicker } from './components/StartupModePicker';
 import { applyFontSize } from './lib/appearance';
+import { useMobileLayout } from './lib/useMobileLayout';
+import { MobileHeader } from './components/MobileHeader';
 
 export function App() {
   const desk = useDesk();
@@ -64,7 +68,9 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
   const t = useT(),
     { boot, thread, threadId, projectId } = desk;
   const remote = !!window.codexDesk?.remote;
-  const [sidebar, setSidebar] = useState(() => !remote || window.innerWidth >= 760),
+  const mobile = useMobileLayout();
+  const [mobileActions, setMobileActions] = useState(false);
+  const [sidebar, setSidebar] = useState(() => !mobile),
     [inspector, setInspector] = useState(() => window.innerWidth >= 1190),
     [settings, setSettings] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(264),
@@ -84,8 +90,8 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
     return () => window.removeEventListener('desk:terminal', open);
   }, []);
   useEffect(() => {
-    if (remote && window.innerWidth < 760) setSidebar(false);
-  }, [threadId, remote]);
+    if (mobile) setSidebar(false);
+  }, [threadId, mobile]);
   const [inspectorTab, setInspectorTab] = useState<{ tab: 'files' | 'changes'; revision: number }>({
     tab: 'files',
     revision: 0,
@@ -218,7 +224,14 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
         event.preventDefault();
         setSettings(true);
       }
-      if (event.key === 'Escape') setMenu(false);
+      if (event.key === 'Escape' && !event.defaultPrevented) {
+        setMenu(false);
+        if (mobile && (sidebar || inspector)) {
+          event.preventDefault();
+          setSidebar(false);
+          setInspector(false);
+        }
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -353,7 +366,8 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
                   className="new-conversation"
                   onClick={() => {
                     desk.newThread();
-                    inputRef.current?.focus();
+                    if (mobile) setSidebar(false);
+                    else inputRef.current?.focus();
                   }}
                 >
                   <Plus size={18} />
@@ -530,6 +544,21 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
           </>
         )}
         <main className="main-panel">
+          {mobile && (
+            <MobileHeader
+              title={desk.newConversation ? 'Codex Desk' : title}
+              workspace={project?.name || t('默认工作区', 'Default workspace')}
+              ready={ready}
+              goal={thread?.goal}
+              onHistory={() => setSidebar(true)}
+              onNew={() => desk.newThread()}
+              onActions={() => setMobileActions(true)}
+              onGoal={() => {
+                setGoalObjective('');
+                setGoalPanel(true);
+              }}
+            />
+          )}
           <div className="conversation-topbar">
             <div className="conversation-breadcrumb">
               {!sidebar && (
@@ -724,17 +753,23 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
                   <span />
                   {t('让工作，接着发生', 'PICK UP WHERE IDEAS BEGIN')}
                 </div>
-                <h1>{t('今天，我们做点什么？', 'What shall we build today?')}</h1>
+                <h1>
+                  {mobile
+                    ? t('今天想做点什么？', 'What’s on your mind?')
+                    : t('今天，我们做点什么？', 'What shall we build today?')}
+                </h1>
                 <p className="welcome-subtitle">
-                  {project
-                    ? t(
-                        `从 ${project.name} 开始，把想法一步步变成现实。`,
-                        `Start with ${project.name}. Take your next idea a little further.`,
-                      )
-                    : t(
-                        '直接描述任务，即可在默认工作区开始。',
-                        'Describe a task to start in your default workspace.',
-                      )}
+                  {mobile
+                    ? t('描述一个任务，随时接着做。', 'A thought, a task, a place to start.')
+                    : project
+                      ? t(
+                          `从 ${project.name} 开始，把想法一步步变成现实。`,
+                          `Start with ${project.name}. Take your next idea a little further.`,
+                        )
+                      : t(
+                          '直接描述任务，即可在默认工作区开始。',
+                          'Describe a task to start in your default workspace.',
+                        )}
                 </p>
                 {!project && (
                   <button className="open-project-hero" onClick={() => void desk.addProject()}>
@@ -924,6 +959,115 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
           </>
         )}
       </div>
+      {mobile && mobileActions && (
+        <Dialog
+          title={t('会话操作', 'Conversation actions')}
+          onClose={() => setMobileActions(false)}
+          className="mobile-actions-sheet"
+        >
+          <div className="mobile-action-list">
+            <button
+              aria-label={t('CLI 同步', 'CLI sync')}
+              disabled={!thread || desk.archived}
+              onClick={() => {
+                setMobileActions(false);
+                setCliPanel({ threadId, command: '' });
+              }}
+            >
+              <Terminal size={20} />
+              <span>
+                {t('CLI 同步', 'CLI sync')}
+                <small>{t('在终端中继续同一个会话', 'Continue this conversation in the terminal')}</small>
+              </span>
+            </button>
+            <button
+              onClick={() => {
+                setMobileActions(false);
+                setInspector(true);
+              }}
+            >
+              <Folder size={20} />
+              <span>{t('文件与更改', 'Files and changes')}</span>
+            </button>
+            <button
+              onClick={() => {
+                setMobileActions(false);
+                setGoalObjective('');
+                setGoalPanel(true);
+              }}
+            >
+              <Target size={20} />
+              <span>{t('会话目标', 'Conversation goal')}</span>
+            </button>
+            <button
+              onClick={() => {
+                setMobileActions(false);
+                setStatusPanel(true);
+              }}
+            >
+              <SlidersHorizontal size={20} />
+              <span>{t('会话状态', 'Session status')}</span>
+            </button>
+            {thread && (
+              <>
+                <button
+                  onClick={() => {
+                    setMobileActions(false);
+                    setName(title);
+                    setRenaming(true);
+                  }}
+                >
+                  <Pencil size={20} />
+                  <span>{t('重命名', 'Rename')}</span>
+                </button>
+                <button
+                  disabled={running}
+                  onClick={() => {
+                    setMobileActions(false);
+                    void desk.fork(threadId).catch(desk.fail);
+                  }}
+                >
+                  <GitFork size={20} />
+                  <span>{t('分叉会话', 'Fork conversation')}</span>
+                </button>
+                <button
+                  disabled={running}
+                  onClick={() => {
+                    setMobileActions(false);
+                    void desk.archive(threadId, desk.archived).catch(desk.fail);
+                  }}
+                >
+                  <Archive size={20} />
+                  <span>
+                    {desk.archived
+                      ? t('恢复会话', 'Restore conversation')
+                      : t('归档会话', 'Archive conversation')}
+                  </span>
+                </button>
+              </>
+            )}
+            <button
+              aria-label={t('设置', 'Settings')}
+              onClick={() => {
+                setMobileActions(false);
+                setSettings(true);
+              }}
+            >
+              <Settings2 size={20} />
+              <span>
+                {t('设置', 'Settings')}
+                <small>{t('字体、外观与语言', 'Font size, appearance and language')}</small>
+              </span>
+            </button>
+            {/CodexDeskAndroid\//.test(navigator.userAgent) && (
+              <a href="/_desk/connection">
+                <span className="status-dot" />
+                <span>{t('电脑连接设置', 'Computer connection settings')}</span>
+              </a>
+            )}
+          </div>
+        </Dialog>
+      )}
       {settings && (
         <Settings
           boot={boot}

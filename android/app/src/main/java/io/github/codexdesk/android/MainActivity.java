@@ -78,6 +78,9 @@ public class MainActivity extends Activity {
             return insets;
         });
         setContentView(root);
+        if (Build.VERSION.SDK_INT >= 33) {
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::navigateBack);
+        }
         tailnet = NativeTailnet.get(this);
         connectivity = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
         networkCallback = new ConnectivityManager.NetworkCallback() {
@@ -222,6 +225,7 @@ public class MainActivity extends Activity {
         content = new FrameLayout(this); root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
         browser = new WebView(this); browser.setBackgroundColor(BG);
         WebSettings settings = browser.getSettings();
+        settings.setUserAgentString(settings.getUserAgentString() + " CodexDeskAndroid/" + BuildConfig.VERSION_NAME);
         settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(false); settings.setAllowFileAccessFromFileURLs(false); settings.setAllowUniversalAccessFromFileURLs(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
@@ -232,7 +236,13 @@ public class MainActivity extends Activity {
         browser.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
-                if (Endpoint.sameOrigin(origin, url)) return false;
+                if (Endpoint.sameOrigin(origin, url)) {
+                    if ("/_desk/connection".equals(request.getUrl().getPath())) {
+                        if (request.isForMainFrame() && request.hasGesture()) showConnection();
+                        return true;
+                    }
+                    return false;
+                }
                 if (request.isForMainFrame() && request.hasGesture()) external(url);
                 return true;
             }
@@ -243,7 +253,15 @@ public class MainActivity extends Activity {
             }
             @Override public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) { handler.cancel(); fail(R.string.certificate); }
             @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) { if (request.isForMainFrame()) fail(R.string.offline); }
-            @Override public void onPageFinished(WebView view, String url) { CookieManager.getInstance().flush(); }
+            @Override public void onPageFinished(WebView view, String url) {
+                CookieManager.getInstance().flush();
+                if (view != browser || !Endpoint.sameOrigin(origin, url)) return;
+                // Older servers retain the native connection button. The new
+                // mobile shell exposes it in its menu and pairing screen.
+                view.evaluateJavascript("Boolean(document.querySelector('meta[name=\"codex-desk-mobile-shell\"][content=\"1\"]'))", supported -> {
+                    if (view == browser) toolbar.setVisibility("true".equals(supported) ? View.GONE : View.VISIBLE);
+                });
+            }
         });
         browser.setWebChromeClient(new WebChromeClient() {
             @Override public boolean onJsPrompt(WebView view, String url, String message, String value, JsPromptResult result) {
@@ -263,7 +281,7 @@ public class MainActivity extends Activity {
                     .setOnCancelListener(dialog -> result.cancel()).show();
                 return true;
             }
-            @Override public void onProgressChanged(WebView view, int value) { progress.setProgress(value); progress.setVisibility(value < 100 ? View.VISIBLE : View.INVISIBLE); }
+            @Override public void onProgressChanged(WebView view, int value) { progress.setProgress(value); progress.setVisibility(value < 100 ? View.VISIBLE : View.GONE); }
             @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
                 if (files != null) files.onReceiveValue(null);
                 files = callback;
@@ -293,6 +311,17 @@ public class MainActivity extends Activity {
         if (failure != null && failure.getVisibility() == View.VISIBLE) { failure.setVisibility(View.GONE); browser.reload(); }
         else browser.evaluateJavascript("window.dispatchEvent(new Event('online'))", null);
     }
+    private void navigateBack() {
+        if (browser == null) { moveTaskToBack(true); return; }
+        WebView current = browser;
+        current.evaluateJavascript("!document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}))", handled -> {
+            if (current == browser && !"true".equals(handled)) moveTaskToBack(true);
+        });
+    }
+    // API 26–32 fallback; API 33+ uses OnBackInvokedDispatcher above.
+    @SuppressLint("GestureBackNavigation")
+    @SuppressWarnings("deprecation")
+    @Override public void onBackPressed() { navigateBack(); }
     @Override protected void onStart() { super.onStart(); tailnet.listen(tailnetListener); }
     @Override protected void onStop() { tailnet.unlisten(tailnetListener); super.onStop(); }
     @Override protected void onResume() { super.onResume(); tailnet.networkChanged(); wake(); }

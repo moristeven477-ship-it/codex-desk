@@ -39,6 +39,12 @@ _截图使用测试项目，应用实际连接本机 Codex CLI。_
 - 完整 `/` 命令菜单、内置真实 CLI、右上角目标面板。
 - 带说明与选中状态的模型弹窗，以及渐变赛博朋克樱花 SVG 图标。
 
+## 手机界面
+
+手机使用单层会话页头和随文字增高的紧凑输入框。点击 **＋** 添加图片、查看全部 `/` 命令或切换 Plan；点击模型名称，在底部面板切换模型、思考强度、权限与 Fast。**右上角 ⋯ → 设置** 保留平滑字号滑块、主题与语言。安卓返回键先关闭当前面板。电脑端与 APK 均更新至 **0.5.0** 后，连接设置也收进菜单，不再占用额外顶栏。[手机安装与配对](docs/ANDROID.md#简体中文)。
+
+<img src="docs/screenshots/mobile-home-light-zh.png" width="260" alt="手机浅色界面" /> <img src="docs/screenshots/mobile-session-sheet.png" width="260" alt="手机会话设置面板" />
+
 ## 安装
 
 发布目标为 **Ubuntu 24.04、x86-64**，其他系统和架构尚未验证。
@@ -52,14 +58,14 @@ npm install -g @openai/codex
 codex login
 ```
 
-应用会自动查找常用 npm、nvm、Volta 和本地可执行文件目录。找不到时，可在「设置 → Codex CLI」中填写完整路径。已验证 CLI 版本为 **0.154.0**。
+应用会自动查找常用 npm、nvm、Volta 和本地可执行文件目录。找不到时，可在「设置 → Codex CLI」中填写完整路径。已验证 CLI 版本为 **0.154.0 和 0.158.0**。
 
 ### Ubuntu 安装包
 
 从 [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest) 下载 `.deb`：
 
 ```bash
-sudo apt install ./codex-desk-0.4.1-amd64.deb
+sudo apt install ./codex-desk-0.5.0-amd64.deb
 ```
 
 安装后在 Ubuntu 应用菜单中打开 **Codex Desk**，或运行 `codex-desk`。
@@ -67,14 +73,14 @@ sudo apt install ./codex-desk-0.4.1-amd64.deb
 也可下载便携 AppImage：
 
 ```bash
-chmod +x codex-desk-0.4.1-x86_64.AppImage
-./codex-desk-0.4.1-x86_64.AppImage
+chmod +x codex-desk-0.5.0-x86_64.AppImage
+./codex-desk-0.5.0-x86_64.AppImage
 ```
 
 没有 FUSE 时：
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.4.1-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.5.0-x86_64.AppImage
 ```
 
 Ubuntu 24.04 优先使用 `.deb`，安装器包含 Electron 的 AppArmor 集成。遇到沙箱错误时参考[故障排查](docs/TROUBLESHOOTING.md)，不要通过关闭沙箱解决。

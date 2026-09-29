@@ -198,27 +198,51 @@ html[data-remote] .remote-settings-button {
   margin-right: 12px;
   -webkit-app-region: no-drag;
 }
-@media (max-width: 759px) {
+.mobile-header {
+  display: none;
+}
+@media (max-width: 959px) {
   html[data-remote] {
-    font-size: 15px;
+    --bg: #151618;
+    --titlebar: var(--bg);
+    --sidebar: #1b1c1f;
+    --raised: #252629;
+    --composer: #242528;
+    --composer-border: #ffffff12;
+    --bubble: #292b30;
+    --text: #ececf0;
+    --secondary: #aaabb3;
+    --muted: #858792;
+  }
+  html[data-remote][data-theme='light'] {
+    --bg: #faf9f6;
+    --titlebar: var(--bg);
+    --sidebar: #f2f1ed;
+    --raised: #ffffff;
+    --composer: #ffffff;
+    --composer-border: #2425281c;
+    --bubble: #eeede8;
+    --text: #292a30;
+    --secondary: #656671;
+    --muted: #777981;
   }
   html[data-remote] body {
     min-width: 0;
     min-height: 0;
+    overscroll-behavior: none;
   }
   html[data-remote] .app-shell {
-    height: 100dvh;
+    position: fixed;
+    top: var(--mobile-top, 0px);
+    left: 0;
+    width: 100%;
+    height: var(--mobile-height, 100dvh);
     padding-top: env(safe-area-inset-top);
   }
-  html[data-remote] .titlebar {
-    height: 44px;
-    -webkit-app-region: no-drag;
-  }
-  html[data-remote] .brand {
-    width: auto;
-    padding-left: 12px;
-  }
-  html[data-remote] .titlebar-center {
+  html[data-remote] .titlebar,
+  html[data-remote] .conversation-topbar,
+  html[data-remote] .main-statusbar,
+  html[data-remote] .resize-handle {
     display: none;
   }
   html[data-remote] .workspace-layout {
@@ -229,148 +253,532 @@ html[data-remote] .remote-settings-button {
     width: 100%;
     min-width: 0;
   }
-  html[data-remote] .resize-handle {
-    display: none;
+  html[data-remote] .icon-button {
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 14px;
+  }
+  html[data-remote] .mobile-header {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 2px;
+    min-height: 62px;
+    padding: 6px 10px;
+    background: var(--bg);
+  }
+  .mobile-header-title {
+    flex: 1;
+    min-width: 0;
+    padding: 0 6px;
+  }
+  .mobile-header-title strong {
+    display: block;
+    font-size: 0.94rem;
+    font-weight: 570;
+    letter-spacing: -0.25px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-header-title small {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    margin-top: 4px;
+    font-size: 0.66rem;
+    color: var(--muted);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .mobile-header-title .status-dot {
+    width: 5px;
+    height: 5px;
+    flex-shrink: 0;
+  }
+  html[data-remote] .mobile-header .goal-badge {
+    min-height: 36px;
+    border-radius: 20px;
+    padding: 6px 8px;
+    font-size: 0.67rem;
+    gap: 4px;
+    flex-shrink: 0;
   }
   html[data-remote] .sidebar {
     position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    width: min(320px, 88vw);
+    inset: 0 auto 0 0;
+    width: min(330px, 88vw);
     z-index: 61;
-    box-shadow: 8px 0 30px #0005;
+    box-shadow: 8px 0 40px #0005;
+    border-radius: 0 22px 22px 0;
+  }
+  html[data-remote] .sidebar-top {
+    padding: 12px 10px;
+  }
+  html[data-remote] .sidebar .new-conversation {
+    min-height: 44px;
+    border-radius: 12px;
+    font-size: 0.86rem;
+  }
+  html[data-remote] .sidebar kbd {
+    display: none;
+  }
+  html[data-remote] .sidebar .search-box {
+    min-height: 44px;
+    border-radius: 12px;
+  }
+  html[data-remote] .sidebar .thread-item {
+    padding-top: 12px;
+    padding-bottom: 12px;
   }
   html[data-remote] .inspector {
     position: absolute;
-    top: 0;
-    bottom: 0;
-    right: 0;
-    width: min(340px, 94vw);
+    inset: 0 0 0 auto;
+    width: min(360px, 94vw);
     z-index: 61;
-    box-shadow: -8px 0 30px #0005;
+    box-shadow: -8px 0 40px #0005;
+    border-radius: 22px 0 0 22px;
   }
   html[data-remote] .mobile-panel-dismiss {
     display: block;
     position: absolute;
     inset: 0;
     z-index: 60;
-    background: #0006;
-  }
-  html[data-remote] .conversation-topbar {
-    min-height: 48px;
-    height: auto;
-    padding: 8px 10px;
-    gap: 8px;
-  }
-  html[data-remote] .conversation-breadcrumb {
-    min-width: 0;
-    gap: 6px;
-  }
-  html[data-remote] .conversation-breadcrumb strong {
-    max-width: 36vw;
-    text-overflow: ellipsis;
-    overflow: hidden;
-    white-space: nowrap;
-  }
-  html[data-remote] .breadcrumb-project,
-  html[data-remote] .breadcrumb-slash {
-    display: none;
-  }
-  html[data-remote] .conversation-actions {
-    gap: 5px;
-  }
-  html[data-remote] .sync-terminal-button {
-    font-size: 0;
-    gap: 0;
-  }
-  html[data-remote] .goal-badge {
-    max-width: 100px;
-    font-size: 0.65rem;
-    padding: 6px;
-    overflow: hidden;
-  }
-  html[data-remote] .icon-button {
-    min-width: 32px;
-    min-height: 32px;
+    background: #0007;
   }
   html[data-remote] .chat-content {
-    padding: 20px 14px;
+    padding: 22px 18px 12px;
   }
   html[data-remote] .chat-content .message {
     max-width: 100%;
+    margin-bottom: 24px;
   }
   html[data-remote] .user-bubble {
-    max-width: 92%;
+    max-width: 91%;
+    border: 0;
+    border-radius: 22px 22px 6px 22px;
+    padding: 12px 16px;
+  }
+  html[data-remote] .user-text {
+    font-size: 1rem;
+    line-height: 1.65;
   }
   html[data-remote] .markdown {
-    font-size: 0.95rem;
-    line-height: 1.75;
+    font-size: 1rem;
+    line-height: 1.8;
+  }
+  html[data-remote] .markdown pre {
+    border-radius: 12px;
+  }
+  html[data-remote] .message-heading {
+    margin-bottom: 10px;
+    font-size: 0.73rem;
+  }
+  html[data-remote] .message-copy {
+    min-height: 36px;
+    padding: 8px;
   }
   html[data-remote] .composer-area {
     width: 100%;
     max-width: none;
-    padding: 8px 10px max(8px, env(safe-area-inset-bottom));
+    padding: 8px 12px max(12px, env(safe-area-inset-bottom));
   }
   html[data-remote] .composer {
-    padding: 10px;
+    padding: 12px 10px 7px;
+    border: 1px solid var(--composer-border);
+    border-radius: 26px;
+    box-shadow: 0 3px 16px #00000006;
+  }
+  html[data-remote] .composer:focus-within {
+    border-color: var(--border-strong);
+    box-shadow: 0 0 0 1px var(--border-strong);
   }
   html[data-remote] .composer textarea {
-    min-height: 60px;
-    max-height: 22dvh;
-    font-size: 16px;
+    display: block;
+    min-height: max(26px, 1.55em);
+    max-height: min(128px, calc(var(--mobile-height, 100dvh) * 0.24));
+    font-size: max(16px, 1rem);
+    line-height: 1.55;
+    padding: 0 5px;
+    margin: 0;
+    scrollbar-width: thin;
+  }
+  html[data-remote] .composer textarea::placeholder {
+    color: var(--muted);
   }
   html[data-remote] .composer-toolbar {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 6px;
-    align-items: flex-end;
-    flex-wrap: wrap;
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 4px;
+    padding: 0;
+    margin-top: 8px;
+    min-height: 42px;
   }
   html[data-remote] .composer-tools {
-    flex-wrap: wrap;
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-wrap: nowrap;
     gap: 2px;
+    align-items: center;
   }
-  html[data-remote] .composer-footer {
-    padding: 7px 2px 0;
+  html[data-remote] .composer-tools > .picker-trigger {
+    min-width: 0;
+    flex: 1;
+    max-width: none;
+    min-height: 42px;
+    gap: 5px;
+    border-radius: 20px;
+    padding: 6px;
+    font-size: 0.74rem;
   }
-  html[data-remote] .composer-footer > span:last-child {
+  html[data-remote] .composer-tools > .picker-trigger > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  html[data-remote] .composer-tools > .picker-trigger > svg {
+    flex-shrink: 0;
+  }
+  html[data-remote] .composer-tools > .picker-trigger > svg:first-child {
     display: none;
   }
-  html[data-remote] .setting-button {
-    max-width: 160px;
+  html[data-remote] .composer-tools .mobile-add-button {
+    min-width: 38px;
+    width: 38px;
+    min-height: 42px;
+    flex-shrink: 0;
+    color: var(--text);
   }
-  html[data-remote] .statusbar {
+  .mobile-permission-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px;
+    min-height: 42px;
+    font-size: 0.63rem;
+    white-space: nowrap;
+    color: var(--secondary);
+    border-radius: 20px;
+  }
+  html[data-remote] .composer-send-actions {
+    gap: 5px;
+    flex-shrink: 0;
+  }
+  html[data-remote] .send-button {
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
+    border-radius: 50%;
+  }
+  html[data-remote] .send-button.steer-button {
+    width: auto;
+    min-width: 54px;
+    padding: 0 10px;
+    border-radius: 22px;
+    font-size: 0.75rem;
+  }
+  html[data-remote] .steer-button > svg {
     display: none;
+  }
+  html[data-remote] .stop-button {
+    color: var(--text);
+    background: var(--selected);
+    border: 1px solid var(--border-strong);
+  }
+  html[data-remote] .composer-caption {
+    display: none;
+  }
+  html[data-remote] .composer-mode {
+    padding: 8px 6px;
+    font-size: 0.72rem;
+  }
+  html[data-remote] .steer-status {
+    padding: 8px 5px 0;
+    font-size: 0.72rem;
+  }
+  html[data-remote] .image-attachments {
+    gap: 8px;
+    padding: 0 5px 10px;
+  }
+  html[data-remote] .image-attachments img {
+    width: 58px;
+    height: 58px;
+    border-radius: 12px;
+  }
+  html[data-remote] .image-attachments button {
+    width: 30px;
+    height: 30px;
   }
   html[data-remote] .welcome {
-    padding: 22px 16px;
+    padding: 18px 22px;
+    justify-content: center;
+    overflow-x: hidden;
   }
-  html[data-remote] .welcome h1 {
-    font-size: 1.8rem;
+  html[data-remote] .welcome-inner {
+    max-width: 520px;
+    width: 100%;
   }
   html[data-remote] .welcome-logo {
-    margin-bottom: 18px;
+    width: 56px;
+    height: 56px;
+    border-radius: 18px;
+    margin: 0 auto 23px;
+    box-shadow: none;
+    background: none;
   }
-  html[data-remote] .welcome-eyebrow {
-    font-size: 0.6rem;
+  html[data-remote] .welcome-logo img {
+    width: 56px;
+    height: 56px;
+  }
+  html[data-remote] .welcome h1 {
+    font-size: 1.72rem;
+    font-weight: 500;
+    line-height: 1.35;
+    letter-spacing: -1px;
+    margin: 0 0 13px;
+  }
+  html[data-remote] .welcome-subtitle {
+    font-size: 0.84rem;
+    line-height: 1.6;
+    color: var(--muted);
+    margin: 0;
+  }
+  html[data-remote] .welcome-eyebrow,
+  html[data-remote] .welcome .startup-modes,
+  html[data-remote] .local-note,
+  html[data-remote] .open-project-hero {
+    display: none;
   }
   html[data-remote] .suggestions {
-    grid-template-columns: 1fr;
+    display: flex;
     gap: 8px;
+    margin: 32px -22px 0;
+    padding: 3px 22px 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+  }
+  html[data-remote] .suggestions::-webkit-scrollbar {
+    display: none;
   }
   html[data-remote] .suggestions button {
-    min-height: 0;
-    padding: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    gap: 8px;
+    min-height: 44px;
+    padding: 10px 14px;
+    border: 1px solid var(--border-strong);
+    border-radius: 24px;
+    background: transparent;
+    scroll-snap-align: center;
   }
-  html[data-remote] .dialog-backdrop {
-    padding: 12px;
+  html[data-remote] .suggestions strong {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 450;
+    white-space: nowrap;
+  }
+  html[data-remote] .suggestions button > svg {
+    width: 15px;
+    height: 15px;
+    margin: 0;
+    color: var(--secondary);
+  }
+  html[data-remote] .suggestions button > span,
+  html[data-remote] .suggestions .suggestion-arrow {
+    display: none;
+  }
+  html[data-remote] .dialog-backdrop,
+  html[data-remote] .choice-sheet-backdrop {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: var(--mobile-top, 0px);
+    height: var(--mobile-height, 100dvh);
+    bottom: auto;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0;
     z-index: 100;
+    background: #0008;
+    backdrop-filter: blur(3px);
   }
-  html[data-remote] .dialog {
+  html[data-remote] .choice-sheet-backdrop {
+    z-index: 110;
+  }
+  html[data-remote] .dialog,
+  html[data-remote] .choice-sheet-backdrop .choice-popover {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    inset: auto;
     width: 100%;
     max-width: 100%;
-    max-height: 90dvh;
+    max-height: calc(var(--mobile-height, 100dvh) - 28px);
+    margin: 0;
+    border-radius: 26px 26px 0 0;
+    border: 1px solid var(--border-strong);
+    border-bottom: 0;
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
+    background: var(--sidebar);
+    overflow: hidden;
+    animation: mobile-sheet-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  html[data-remote] .dialog::before,
+  html[data-remote] .choice-sheet-backdrop .choice-popover::before {
+    content: '';
+    display: block;
+    flex-shrink: 0;
+    width: 32px;
+    height: 4px;
+    border-radius: 3px;
+    background: var(--border-strong);
+    margin: 10px auto 0;
+  }
+  html[data-remote] .dialog > header {
+    flex-shrink: 0;
+    padding: 6px 14px 10px 22px;
+    border-bottom: 1px solid var(--border);
+  }
+  html[data-remote] .dialog > header h2 {
+    font-size: 1rem;
+    font-weight: 550;
+  }
+  html[data-remote] .dialog > :not(header) {
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .mobile-action-list {
+    padding: 6px 12px 10px;
+    overflow-y: auto;
+    min-height: 0;
+  }
+  .mobile-action-list > button,
+  .mobile-action-list > a {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    gap: 14px;
+    padding: 13px 12px;
+    min-height: 49px;
+    text-align: left;
+    border-radius: 14px;
+    font-size: 0.9rem;
+    color: var(--text);
+    text-decoration: none;
+  }
+  .mobile-action-list > button:active,
+  .mobile-action-list > a:active {
+    background: var(--hover);
+  }
+  .mobile-action-list > button > svg {
+    flex-shrink: 0;
+    color: var(--secondary);
+  }
+  .mobile-action-list small {
+    display: block;
+    margin-top: 5px;
+    font-size: 0.72rem;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+  html[data-remote] .choice-popover-heading {
+    background: transparent;
+    min-height: 56px;
+    padding: 6px 10px 4px 22px;
+    gap: 10px;
+    font-size: 1rem;
+    color: var(--text);
+  }
+  html[data-remote] .choice-popover-heading > svg,
+  html[data-remote] .choice-online-dot {
+    display: none;
+  }
+  html[data-remote] .choice-popover-heading .icon-button {
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  html[data-remote] .choice-tabs {
+    margin: 0 16px 12px;
+    padding: 4px;
+    background: var(--bg);
+    border-radius: 14px;
+  }
+  html[data-remote] .choice-tabs button {
+    min-height: 38px;
+    font-size: 0.8rem;
+    border-radius: 10px;
+  }
+  html[data-remote] .choice-options {
+    max-height: min(380px, calc(var(--mobile-height, 100dvh) * 0.48));
+    min-height: 0;
+    padding: 0 12px;
+    overscroll-behavior: contain;
+  }
+  html[data-remote] .choice-option {
+    min-height: 68px;
+    padding: 12px 10px;
+    border-radius: 14px;
+  }
+  html[data-remote] .choice-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+  }
+  html[data-remote] .choice-title {
+    font-size: 0.9rem;
+  }
+  html[data-remote] .choice-description {
+    font-size: 0.73rem;
+    line-height: 1.5;
+    margin-top: 3px;
+    white-space: normal;
+  }
+  html[data-remote] .choice-footer {
+    font-size: 0.69rem;
+    padding: 12px 22px 2px;
+    border: 0;
+    line-height: 1.6;
+  }
+  .mobile-speed-setting {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 22px 10px;
+    gap: 12px;
+    border-top: 1px solid var(--border);
+    margin-top: 10px;
+  }
+  .mobile-speed-setting strong {
+    display: block;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+  .mobile-speed-setting small {
+    display: block;
+    font-size: 0.73rem;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  html[data-remote] .mobile-speed-setting .fast-toggle {
+    min-width: 72px;
+    min-height: 42px;
+    padding: 8px 12px;
+    border-radius: 24px;
+    justify-content: center;
+    font-size: 0.78rem;
+  }
+  .mobile-speed-setting .fast-toggle > span:not(.fast-state) {
+    display: none;
   }
   html[data-remote] .settings-layout {
     flex-direction: column;
@@ -380,7 +788,7 @@ html[data-remote] .remote-settings-button {
     width: 100%;
     flex-direction: row;
     flex-wrap: wrap;
-    padding: 8px;
+    padding: 10px;
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }
@@ -390,42 +798,98 @@ html[data-remote] .remote-settings-button {
     font-size: 0.65rem;
   }
   html[data-remote] .settings-content {
-    padding: 18px;
+    padding: 20px;
   }
   html[data-remote] .setting-row {
     gap: 10px;
   }
-  html[data-remote] .choice-popover {
-    position: fixed;
-    left: 10px;
-    right: 10px;
-    width: auto;
-    max-width: none;
-    bottom: 110px;
-    max-height: 65dvh;
-  }
-  html[data-remote] .choice-menu-dismiss {
-    z-index: 30;
-  }
   html[data-remote] .approval-card {
-    margin: 8px 10px;
-    max-width: calc(100% - 20px);
+    margin: 8px 12px;
+    max-width: calc(100% - 24px);
+    border-radius: 16px;
   }
   html[data-remote] .completion-toast {
     width: calc(100% - 24px);
     max-width: 400px;
+    border-radius: 16px;
   }
   html[data-remote] .terminal-dialog {
     padding: 10px;
   }
   html[data-remote] .embedded-terminal {
-    height: 55dvh;
-    min-height: 160px;
+    height: calc(var(--mobile-height, 100dvh) * 0.55);
+    min-height: 150px;
   }
   html[data-remote] .terminal-command {
     flex-wrap: wrap;
   }
   html[data-remote] .steering-entries {
-    max-height: 20dvh;
+    max-height: min(160px, calc(var(--mobile-height, 100dvh) * 0.25));
+  }
+  html[data-remote] .command-popover {
+    display: flex;
+    flex-direction: column;
+  }
+  html[data-remote] .command-options {
+    min-height: 0;
+    max-height: calc(var(--mobile-height, 100dvh) * 0.52);
+    overscroll-behavior: contain;
+  }
+  html[data-remote] .command-options > button {
+    min-height: 62px;
+    padding: 10px 12px;
+  }
+  html[data-remote] .command-search {
+    margin: 4px 16px 12px;
+    min-height: 44px;
+    border-radius: 13px;
+  }
+  html[data-remote] .command-search input {
+    font-size: 16px;
+  }
+  html[data-remote] .remote-pair {
+    height: var(--mobile-height, 100dvh);
+    min-height: 0;
+  }
+}
+@media (max-width: 959px) and (max-height: 540px) {
+  html[data-remote] .mobile-header {
+    min-height: 50px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+  }
+  html[data-remote] .welcome {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  html[data-remote] .welcome-logo {
+    display: none;
+  }
+  html[data-remote] .welcome h1 {
+    font-size: 1.25rem;
+    margin-bottom: 8px;
+  }
+  html[data-remote] .suggestions {
+    margin-top: 16px;
+  }
+  html[data-remote] .composer-area {
+    padding-top: 5px;
+    padding-bottom: 6px;
+  }
+}
+@keyframes mobile-sheet-in {
+  from {
+    opacity: 0.6;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-remote] .dialog,
+  html[data-remote] .choice-sheet-backdrop .choice-popover {
+    animation: none;
   }
 }

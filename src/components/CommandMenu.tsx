@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Search, Slash, Terminal, ArrowUpRight } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Search, Slash, Terminal, ArrowUpRight, X } from 'lucide-react';
 import { slashCommands } from '../shared/commands';
 import { useT } from '../lib/i18n';
+import { useMobileLayout } from '../lib/useMobileLayout';
+import { useModalFocus } from '../lib/useModalFocus';
 
 export function CommandMenu({
   onSelect,
@@ -11,9 +14,11 @@ export function CommandMenu({
   onClose: () => void;
 }) {
   const t = useT();
+  const mobile = useMobileLayout();
   const [query, setQuery] = useState(''),
     [active, setActive] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
+  useModalFocus(ref, onClose, mobile);
   const entries = slashCommands.filter(
     (item) =>
       !query ||
@@ -22,21 +27,23 @@ export function CommandMenu({
         .includes(query.replace(/^\//, '').toLowerCase()),
   );
   useEffect(() => {
-    ref.current?.querySelector('input')?.focus();
+    if (!mobile) ref.current?.querySelector('input')?.focus();
     const outside = (event: PointerEvent) => {
       if (!ref.current?.contains(event.target as Node)) onClose();
     };
     document.addEventListener('pointerdown', outside);
     return () => document.removeEventListener('pointerdown', outside);
-  }, [onClose]);
+  }, [onClose, mobile]);
   useEffect(() => {
     ref.current?.querySelector(`[data-active="true"]`)?.scrollIntoView({ block: 'nearest' });
   }, [active]);
-  return (
+  const menu = (
     <div
       className="command-popover choice-popover"
       ref={ref}
       role="dialog"
+      aria-modal={mobile || undefined}
+      tabIndex={-1}
       aria-label={t('Codex 命令', 'Codex commands')}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
@@ -61,6 +68,11 @@ export function CommandMenu({
         <Slash size={15} />
         {t('Codex 全部命令', 'All Codex commands')}
         <span className="command-count">{slashCommands.length}</span>
+        {mobile && (
+          <button type="button" className="icon-button" aria-label={t('关闭', 'Close')} onClick={onClose}>
+            <X size={19} />
+          </button>
+        )}
       </div>
       <label className="command-search">
         <Search size={15} />
@@ -125,4 +137,17 @@ export function CommandMenu({
       </div>
     </div>
   );
+  return mobile
+    ? createPortal(
+        <div
+          className="choice-sheet-backdrop"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) onClose();
+          }}
+        >
+          {menu}
+        </div>,
+        document.body,
+      )
+    : menu;
 }

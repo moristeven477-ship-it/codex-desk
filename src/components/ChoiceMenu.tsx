@@ -1,10 +1,12 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown, Cpu, Brain, Gauge, LockKeyhole, Shield, Sparkles, Zap } from 'lucide-react';
+import { Check, ChevronDown, Cpu, Brain, Gauge, LockKeyhole, Shield, Sparkles, Zap, X } from 'lucide-react';
 import type { AccessMode, Model, PermissionMode, ApprovalPolicy } from '../shared/types';
 import { useT } from '../lib/i18n';
+import { useMobileLayout } from '../lib/useMobileLayout';
+import { useModalFocus } from '../lib/useModalFocus';
 
-interface Choice {
+export interface Choice {
   value: string;
   title: string;
   description: string;
@@ -12,7 +14,7 @@ interface Choice {
   badge?: string;
   danger?: boolean;
 }
-interface Section {
+export interface Section {
   id: string;
   title: string;
   value: string;
@@ -20,29 +22,35 @@ interface Section {
   select: (value: string) => void;
 }
 
-function ChoiceMenu({
+export function ChoiceMenu({
   label,
   display,
   icon,
   sections,
   initialSection,
+  triggerSection,
   header,
   footnote,
   disabled,
   compact = false,
   openSignal = 0,
+  extra,
 }: {
   label: string;
   display: string;
   icon: ReactNode;
   sections: Section[];
   initialSection?: string;
+  triggerSection?: string;
   header: string;
   footnote: string;
   disabled?: boolean;
   compact?: boolean;
   openSignal?: number;
+  extra?: ReactNode;
 }) {
+  const mobile = useMobileLayout(),
+    t = useT();
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null),
     panel = useRef<HTMLDivElement>(null),
@@ -58,10 +66,13 @@ function ChoiceMenu({
   }>({ left: 0, bottom: 0, maxHeight: 440 });
   const section = sections.find((item) => item.id === sectionId) || sections[0];
   useEffect(() => {
-    if (openSignal && !disabled) setOpen(true);
+    if (openSignal && !disabled) {
+      setSectionId(initialSection || sections[0].id);
+      setOpen(true);
+    }
   }, [openSignal]);
   useLayoutEffect(() => {
-    if (!open || !trigger.current) return;
+    if (!open || !trigger.current || mobile) return;
     const place = () => {
       const rect = trigger.current!.getBoundingClientRect();
       const above = rect.top > window.innerHeight / 2;
@@ -78,7 +89,8 @@ function ChoiceMenu({
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
     };
-  }, [open]);
+  }, [open, mobile]);
+  useModalFocus(panel, () => setOpen(false), mobile && open);
   useEffect(() => {
     if (!open) return;
     setActive(
@@ -121,13 +133,17 @@ function ChoiceMenu({
         role="combobox"
         aria-label={label}
         aria-expanded={open}
-        aria-haspopup="listbox"
+        aria-haspopup={mobile ? 'dialog' : 'listbox'}
         aria-controls={open ? id : undefined}
         disabled={disabled}
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (!open && triggerSection) setSectionId(triggerSection);
+          setOpen(!open);
+        }}
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
             event.preventDefault();
+            if (triggerSection) setSectionId(triggerSection);
             setOpen(true);
           }
         }}
@@ -139,87 +155,109 @@ function ChoiceMenu({
       {open &&
         createPortal(
           <div
-            ref={panel}
-            className="choice-popover"
-            style={position}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') {
-                event.preventDefault();
-                event.stopPropagation();
-                close();
-              }
+            className={mobile ? 'choice-sheet-backdrop' : 'choice-layer'}
+            onPointerDown={(event) => {
+              if (mobile && event.target === event.currentTarget) close();
             }}
           >
-            <div className="choice-popover-heading">
-              <Sparkles size={14} />
-              <span>{header}</span>
-              <span className="choice-online-dot" />
-            </div>
-            {sections.length > 1 && (
-              <div className="choice-tabs" role="tablist" aria-label={label}>
-                {sections.map((item) => (
-                  <button
-                    role="tab"
-                    type="button"
-                    key={item.id}
-                    aria-selected={section.id === item.id}
-                    onClick={() => setSectionId(item.id)}
-                  >
-                    {item.title}
-                  </button>
-                ))}
-              </div>
-            )}
             <div
-              id={id}
-              ref={list}
-              className="choice-options"
-              role="listbox"
-              tabIndex={-1}
-              aria-label={section.title}
-              aria-activedescendant={section.choices[active] ? `${id}-option-${active}` : undefined}
+              ref={panel}
+              className="choice-popover"
+              style={mobile ? undefined : position}
+              role={mobile ? 'dialog' : undefined}
+              aria-modal={mobile ? true : undefined}
+              aria-label={mobile ? label : undefined}
+              tabIndex={mobile ? -1 : undefined}
               onKeyDown={(event) => {
-                if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+                if (event.key === 'Escape') {
                   event.preventDefault();
-                  if (section.choices.length)
-                    setActive((index) =>
-                      event.key === 'Home'
-                        ? 0
-                        : event.key === 'End'
-                          ? section.choices.length - 1
-                          : (index + (event.key === 'ArrowDown' ? 1 : -1) + section.choices.length) %
-                            section.choices.length,
-                    );
-                } else if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  if (section.choices[active]) select(section.choices[active].value);
-                } else if (event.key === 'Tab') close();
+                  event.stopPropagation();
+                  close();
+                }
               }}
             >
-              {section.choices.map((choice, index) => (
-                <div
-                  id={`${id}-option-${index}`}
-                  key={choice.value}
-                  role="option"
-                  aria-selected={choice.value === section.value}
-                  className={`choice-option ${index === active ? 'highlighted' : ''} ${choice.value === section.value ? 'selected' : ''} ${choice.danger ? 'danger' : ''}`}
-                  onMouseEnter={() => setActive(index)}
-                  onClick={() => select(choice.value)}
-                >
-                  <span className="choice-icon">{choice.icon}</span>
-                  <span className="choice-text">
-                    <span className="choice-title">{choice.title}</span>
-                    <span className="choice-description">{choice.description}</span>
-                  </span>
-                  <span className="choice-mark">
-                    {choice.value === section.value ? <Check size={15} /> : choice.badge}
-                  </span>
+              <div className="choice-popover-heading">
+                <Sparkles size={14} />
+                <span>{header}</span>
+                <span className="choice-online-dot" />
+                {mobile && (
+                  <button
+                    className="icon-button"
+                    type="button"
+                    onClick={close}
+                    aria-label={t('关闭', 'Close')}
+                  >
+                    <X size={20} />
+                  </button>
+                )}
+              </div>
+              {sections.length > 1 && (
+                <div className="choice-tabs" role="tablist" aria-label={label}>
+                  {sections.map((item) => (
+                    <button
+                      role="tab"
+                      type="button"
+                      key={item.id}
+                      aria-selected={section.id === item.id}
+                      onClick={() => setSectionId(item.id)}
+                    >
+                      {item.title}
+                    </button>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <div className="choice-footer">
-              <Cpu size={13} />
-              {footnote}
+              )}
+              <div
+                id={id}
+                ref={list}
+                className="choice-options"
+                role="listbox"
+                tabIndex={-1}
+                aria-label={section.title}
+                aria-activedescendant={section.choices[active] ? `${id}-option-${active}` : undefined}
+                onKeyDown={(event) => {
+                  if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+                    event.preventDefault();
+                    if (section.choices.length)
+                      setActive((index) =>
+                        event.key === 'Home'
+                          ? 0
+                          : event.key === 'End'
+                            ? section.choices.length - 1
+                            : (index + (event.key === 'ArrowDown' ? 1 : -1) + section.choices.length) %
+                              section.choices.length,
+                      );
+                  } else if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    if (section.choices[active]) select(section.choices[active].value);
+                  } else if (event.key === 'Tab' && !mobile) close();
+                }}
+              >
+                {section.choices.map((choice, index) => (
+                  <div
+                    id={`${id}-option-${index}`}
+                    key={choice.value}
+                    role="option"
+                    aria-selected={choice.value === section.value}
+                    className={`choice-option ${index === active ? 'highlighted' : ''} ${choice.value === section.value ? 'selected' : ''} ${choice.danger ? 'danger' : ''}`}
+                    onMouseEnter={() => setActive(index)}
+                    onClick={() => select(choice.value)}
+                  >
+                    <span className="choice-icon">{choice.icon}</span>
+                    <span className="choice-text">
+                      <span className="choice-title">{choice.title}</span>
+                      <span className="choice-description">{choice.description}</span>
+                    </span>
+                    <span className="choice-mark">
+                      {choice.value === section.value ? <Check size={15} /> : choice.badge}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {extra}
+              <div className="choice-footer">
+                <Cpu size={13} />
+                {footnote}
+              </div>
             </div>
           </div>,
           document.body,

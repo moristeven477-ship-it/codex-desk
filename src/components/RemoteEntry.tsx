@@ -21,6 +21,18 @@ export function RemoteEntry() {
   useEffect(() => {
     document.documentElement.dataset.remote = 'true';
     document.documentElement.dataset.theme = 'dark';
+    const viewport = window.visualViewport;
+    const resize = () => {
+      document.documentElement.style.setProperty(
+        '--mobile-height',
+        `${viewport?.height ?? window.innerHeight}px`,
+      );
+      document.documentElement.style.setProperty('--mobile-top', `${viewport?.offsetTop ?? 0}px`);
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    viewport?.addEventListener('resize', resize);
+    viewport?.addEventListener('scroll', resize);
     let disposed = false;
     const unpair = () => {
       bridge.current?.dispose();
@@ -43,6 +55,9 @@ export function RemoteEntry() {
       disposed = true;
       bridge.current?.dispose();
       window.removeEventListener('desk:pair-required', unpair);
+      window.removeEventListener('resize', resize);
+      viewport?.removeEventListener('resize', resize);
+      viewport?.removeEventListener('scroll', resize);
     };
   }, []);
   if (ready) return <App />;
@@ -106,6 +121,11 @@ export function RemoteEntry() {
       <button className="text-button" onClick={() => setZh(!zh)}>
         {zh ? 'English' : '简体中文'}
       </button>
+      {/CodexDeskAndroid\//.test(navigator.userAgent) && (
+        <a className="text-button" href="/_desk/connection">
+          {t('连接设置', 'Connection settings')}
+        </a>
+      )}
       <p className="remote-note">
         {t(
           '手机与电脑需连接同一 Tailscale 网络。',

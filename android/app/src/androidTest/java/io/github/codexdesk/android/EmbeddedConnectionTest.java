@@ -5,6 +5,8 @@ import android.os.Bundle;
 import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.MotionEvent;
+import android.view.WindowInsets;
 import android.webkit.WebView;
 import android.widget.Button;
 import android.widget.EditText;
@@ -19,6 +21,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.json.JSONArray;
 import static org.junit.Assert.*;
 
 /** Real Go engine, real WebView TLS, real gateway; only the CLI/account are fixtures. */
@@ -54,6 +57,28 @@ public class EmbeddedConnectionTest {
         return value.get();
     }
     private void page(String description, String condition) { eventually(description, () -> "true".equals(js(condition))); }
+    private void tapWeb(String selector) throws Exception {
+        js("document.querySelector('"+selector+"').scrollIntoView({block:'nearest'})");
+        SystemClock.sleep(220); // Wait for the sheet's entrance animation before a physical tap.
+        JSONArray point = new JSONArray(js("(()=>{const r=document.querySelector('"+selector+"').getBoundingClientRect();return [r.left+r.width/2,r.top+r.height/2,innerWidth]})()"));
+        float cssX = (float) point.getDouble(0), cssY = (float) point.getDouble(1), cssWidth = (float) point.getDouble(2);
+        float[] screenPoint = new float[2];
+        activity.onActivity(screen -> {
+            WebView view = find(screen.getWindow().getDecorView(), WebView.class, null);
+            int[] location = new int[2]; view.getLocationOnScreen(location);
+            float scale = view.getWidth() / cssWidth;
+            screenPoint[0] = location[0] + cssX * scale; screenPoint[1] = location[1] + cssY * scale;
+        });
+        long time = SystemClock.uptimeMillis();
+        MotionEvent down = MotionEvent.obtain(time, time, MotionEvent.ACTION_DOWN, screenPoint[0], screenPoint[1], 0);
+        MotionEvent up = MotionEvent.obtain(time, time+80, MotionEvent.ACTION_UP, screenPoint[0], screenPoint[1], 0);
+        InstrumentationRegistry.getInstrumentation().sendPointerSync(down);
+        InstrumentationRegistry.getInstrumentation().sendPointerSync(up);
+        down.recycle(); up.recycle();
+    }
+    private void back() throws Exception {
+        InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand("input keyevent 4").close();
+    }
     private void connect(String origin) {
         eventually("native connected", () -> NativeTailnet.get(context()).state().ready());
         activity.onActivity(screen -> { EditText input = find(screen.getWindow().getDecorView(), EditText.class, null); assertNotNull(input); input.setText(origin); });
@@ -82,8 +107,29 @@ public class EmbeddedConnectionTest {
             }
             String received = "document.body.innerText.includes('Your local Codex conversation is working.') && document.querySelectorAll('.user-text').length===1 && document.querySelector('.user-text').textContent==='"+MESSAGE+"' && !document.querySelector('.remote-offline')";
             page("one reply through encrypted tailnet", received);
+            page("compact mobile shell loaded", "navigator.userAgent.includes('CodexDeskAndroid/') && !!document.querySelector('.mobile-header') && document.querySelector('.composer').getBoundingClientRect().height<=105");
+            activity.onActivity(screen -> {
+                Button nativeSettings = find(screen.getWindow().getDecorView(), Button.class, screen.getString(R.string.connection_settings));
+                assertNotNull(nativeSettings); assertFalse("No duplicate native toolbar", nativeSettings.isShown());
+            });
             if (!resume) {
                 page("turn completed", "!document.querySelector('.stop-button')");
+                tapWeb(".mobile-add-button");
+                page("tools sheet opened", "!!document.querySelector('.mobile-tools-sheet')");
+                back();
+                page("system Back dismisses tools without leaving chat", "!document.querySelector('.dialog') && !!document.querySelector('.composer')");
+                tapWeb(".composer textarea");
+                eventually("real Android soft keyboard visible", () -> {
+                    AtomicReference<Boolean> shown = new AtomicReference<>(false);
+                    activity.onActivity(screen -> shown.set(screen.getWindow().getDecorView().getRootWindowInsets().isVisible(WindowInsets.Type.ime())));
+                    return shown.get();
+                });
+                page("send button stays above soft keyboard", "(()=>{const r=document.querySelector('.send-button').getBoundingClientRect();return r.bottom<=visualViewport.height+1 && r.top>=0})()");
+                back();
+                tapWeb(".composer .picker-trigger");
+                page("session sheet opened", "!!document.querySelector('.choice-sheet-backdrop')");
+                back();
+                page("system Back dismisses session sheet", "!document.querySelector('.choice-sheet-backdrop') && !!document.querySelector('.composer')");
                 InstrumentationRegistry.getInstrumentation().waitForIdleSync();
                 SystemClock.sleep(500); // Let the compositor present the verified reply for the screenshot.
                 android.graphics.Bitmap screenshot = InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();
@@ -101,7 +147,10 @@ public class EmbeddedConnectionTest {
             activity.recreate();
             page("Activity recreation restores conversation", received);
             if (resume) {
-                click(R.string.connection_settings);
+                tapWeb(".mobile-header button:last-child");
+                page("native connection link in menu", "!!document.querySelector('a[href=\"/_desk/connection\"]')");
+                tapWeb("a[href=\"/_desk/connection\"]");
+                eventually("connection screen from web menu", () -> "null".equals(js("document.title")));
                 connect("https://desk.tailtest.ts.net:8444");
                 eventually("invalid certificate rejected", () -> {
                     AtomicReference<Boolean> shown = new AtomicReference<>(false);

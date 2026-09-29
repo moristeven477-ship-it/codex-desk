@@ -1,5 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowUp, Square, Paperclip, X, Loader2, Slash, ListChecks, CornerUpRight, Zap } from 'lucide-react';
+import {
+  ArrowUp,
+  Square,
+  Paperclip,
+  X,
+  Loader2,
+  Slash,
+  ListChecks,
+  CornerUpRight,
+  Zap,
+  Plus,
+  Shield,
+} from 'lucide-react';
 import type {
   AccessMode,
   CollaborationMode,
@@ -17,6 +29,9 @@ import { parseSlash } from '../shared/commands';
 import { fastTier, isFastTier } from '../shared/speed';
 import type { PendingSteer } from '../shared/steering';
 import { SteeringQueue } from './SteeringQueue';
+import { useMobileLayout } from '../lib/useMobileLayout';
+import { MobileSessionPicker, permissionLabel } from './MobileSessionPicker';
+import { Dialog } from './Dialog';
 
 export function Composer({
   models,
@@ -79,12 +94,21 @@ export function Composer({
   initialAccess?: PermissionMode;
   initialApprovalPolicy?: ApprovalPolicy;
   initialMode?: CollaborationMode;
-  startup?: { access?: AccessMode; onChange: (access: AccessMode) => void };
+  startup?: { access?: AccessMode; onChange: (access: AccessMode | undefined) => void };
   blocked?: boolean;
 }) {
   const t = useT(),
     [modelId, setModelId] = useState(''),
     [effort, setEffort] = useState('');
+  const mobile = useMobileLayout();
+  const [toolsOpen, setToolsOpen] = useState(false),
+    [sessionOpen, setSessionOpen] = useState(0),
+    [sessionSection, setSessionSection] = useState('models');
+  function openSession(section: string) {
+    inputRef.current?.blur();
+    setSessionSection(section);
+    setSessionOpen((value) => value + 1);
+  }
   const [accessOverride, setAccess] = useState<AccessMode>();
   const chosenAccess = startup ? startup.access : accessOverride;
   const access = chosenAccess ?? initialAccess;
@@ -95,8 +119,8 @@ export function Composer({
     [permissionsOpen, setPermissionsOpen] = useState(0);
   const closeCommands = useCallback(() => {
     setCommandsOpen(false);
-    inputRef.current?.focus();
-  }, [inputRef]);
+    if (!mobile) inputRef.current?.focus();
+  }, [inputRef, mobile]);
   const [images, setImages] = useState<ImageAttachment[]>([]);
   const [steerSent, setSteerSent] = useState(false);
   const [speedPending, setSpeedPending] = useState(false);
@@ -162,10 +186,21 @@ export function Composer({
     : (chosen?.defaultReasoningEffort ?? 'medium');
   const lock = useRef(false);
   useEffect(() => {
-    if (!inputRef.current) return;
-    inputRef.current.style.height = 'auto';
-    inputRef.current.style.height = Math.min(200, inputRef.current.scrollHeight) + 'px';
-  }, [draft, inputRef]);
+    const input = inputRef.current;
+    if (!input) return;
+    const resize = () => {
+      input.style.height = 'auto';
+      const limit = mobile ? Math.min(128, (window.visualViewport?.height ?? innerHeight) * 0.24) : 200;
+      input.style.height = Math.min(limit, input.scrollHeight) + 'px';
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    window.visualViewport?.addEventListener('resize', resize);
+    return () => {
+      window.removeEventListener('resize', resize);
+      window.visualViewport?.removeEventListener('resize', resize);
+    };
+  }, [draft, inputRef, mobile]);
   const disabled = !connected || sending || archived || blocked || speedPending;
   async function command(name: string, args = '') {
     setCommandsOpen(false);
@@ -183,11 +218,13 @@ export function Composer({
       );
     }
     if (name === 'model' && !args) {
-      setModelOpen((value) => value + 1);
+      if (mobile) openSession('models');
+      else setModelOpen((value) => value + 1);
       return true;
     }
     if (name === 'permissions' && !args) {
-      setPermissionsOpen((value) => value + 1);
+      if (mobile) openSession('permission');
+      else setPermissionsOpen((value) => value + 1);
       return true;
     }
     if (name === 'plan') {
@@ -299,6 +336,33 @@ export function Composer({
       if (mounted.current) setImporting(false);
     }
   }
+  const fastControl = (
+    <button
+      type="button"
+      className={`fast-toggle ${fast ? 'active' : ''}`}
+      aria-label={t('Fast 模式', 'Fast mode')}
+      aria-pressed={fast}
+      aria-busy={speedPending}
+      disabled={speedDisabled || (!fast && !fastServiceTier)}
+      title={
+        !fast && !fastServiceTier
+          ? t('当前模型未提供 Fast 模式', 'Fast mode is not available for this model')
+          : running
+            ? t('任务结束后可切换 Fast', 'Change Fast after the running task finishes')
+            : t(
+                `${fast ? '关闭' : '开启'} Fast · 更快，额度消耗更高`,
+                `Turn Fast ${fast ? 'off' : 'on'} · Faster, increased usage`,
+              )
+      }
+      onClick={() => void changeFast(!fast).catch(onError)}
+    >
+      {speedPending ? <Loader2 size={13} className="spin" /> : <Zap size={13} />}
+      <span>Fast</span>
+      <span className="fast-state">
+        {initialServiceTier === undefined ? 'CLI' : fast ? t('开', 'On') : t('关', 'Off')}
+      </span>
+    </button>
+  );
   return (
     <div className="composer-area">
       <SteeringQueue
@@ -366,20 +430,25 @@ export function Composer({
             if (!e.clipboardData.getData('text/plain')) e.preventDefault();
             void pasteImages(files);
           }}
-          rows={2}
+          rows={mobile ? 1 : 2}
           disabled={archived}
           aria-label={t('发送给 Codex 的消息', 'Message Codex')}
           placeholder={
             archived
               ? t('恢复此会话后继续', 'Restore this conversation to continue')
               : running
-                ? t('补充说明或调整方向，Enter 插话…', 'Add details or change direction. Enter to steer…')
-                : t('描述任务，剩下的交给 Codex…', 'Describe a task for Codex…')
+                ? mobile
+                  ? t('补充说明或调整方向…', 'Add a follow-up…')
+                  : t('补充说明或调整方向，Enter 插话…', 'Add details or change direction. Enter to steer…')
+                : mobile
+                  ? t('发消息，或描述一个任务…', 'Message Codex…')
+                  : t('描述任务，剩下的交给 Codex…', 'Describe a task for Codex…')
           }
           onKeyDown={(e) => {
             if (
               e.key === 'Enter' &&
               !e.shiftKey &&
+              (!mobile || e.ctrlKey || e.metaKey || !!parseSlash(draft)) &&
               !e.nativeEvent.isComposing &&
               e.nativeEvent.keyCode !== 229
             ) {
@@ -390,71 +459,107 @@ export function Composer({
         />
         <div className="composer-toolbar">
           <div className="composer-tools">
-            <button
-              className="icon-button command-trigger"
-              type="button"
-              aria-label={t('Codex 命令', 'Codex commands')}
-              title={t('全部 / 命令', 'All / commands')}
-              disabled={!connected || sending || speedPending}
-              onClick={() => setCommandsOpen(!commandsOpen)}
-            >
-              <Slash size={17} />
-            </button>
-            <button
-              className="icon-button"
-              disabled={sending || archived || importing || images.length >= MAX_IMAGES}
-              onClick={() => void attach()}
-              title={t('添加图片，也可 Ctrl+V 粘贴', 'Attach images, or paste with Ctrl+V')}
-              aria-label={t('添加图片', 'Attach images')}
-            >
-              <Paperclip size={18} />
-            </button>
-            <span className="toolbar-separator" />
-            <ModelPicker
-              openSignal={modelOpen}
-              models={options}
-              chosen={chosen}
-              effort={selectedEffort}
-              onModel={setModelId}
-              onEffort={setEffort}
-              disabled={!options.length || running || sending || speedPending}
-            />
-            {chosen && (
-              <ModelPicker
-                models={options}
-                chosen={chosen}
-                effort={selectedEffort}
-                onModel={setModelId}
-                onEffort={setEffort}
-                disabled={running || sending || speedPending}
-                effortOnly
-              />
+            {mobile ? (
+              <>
+                <button
+                  className="icon-button mobile-add-button"
+                  type="button"
+                  aria-label={t('添加与工具', 'Add and tools')}
+                  aria-haspopup="dialog"
+                  disabled={sending || archived || importing}
+                  onClick={() => {
+                    inputRef.current?.blur();
+                    setToolsOpen(true);
+                  }}
+                >
+                  <Plus size={21} />
+                </button>
+                <MobileSessionPicker
+                  models={options}
+                  chosen={chosen}
+                  effort={selectedEffort}
+                  onModel={setModelId}
+                  onEffort={setEffort}
+                  access={access}
+                  approvalPolicy={
+                    chosenAccess
+                      ? chosenAccess === 'danger-full-access'
+                        ? 'never'
+                        : 'on-request'
+                      : initialApprovalPolicy
+                  }
+                  onAccess={startup ? startup.onChange : setAccess}
+                  disabled={!options.length || running || sending || speedPending}
+                  openSignal={sessionOpen}
+                  section={sessionSection}
+                  fast={fast}
+                  speedControl={fastControl}
+                />
+                <button
+                  type="button"
+                  className="mobile-permission-trigger"
+                  aria-label={t('权限模式', 'Permission mode')}
+                  aria-haspopup="dialog"
+                  disabled={running || sending || speedPending}
+                  onClick={() => openSession('permission')}
+                >
+                  <Shield size={13} />
+                  {permissionLabel(
+                    access,
+                    chosenAccess
+                      ? chosenAccess === 'danger-full-access'
+                        ? 'never'
+                        : 'on-request'
+                      : initialApprovalPolicy,
+                    t,
+                  )}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="icon-button command-trigger"
+                  type="button"
+                  aria-label={t('Codex 命令', 'Codex commands')}
+                  title={t('全部 / 命令', 'All / commands')}
+                  disabled={!connected || sending || speedPending}
+                  onClick={() => setCommandsOpen(!commandsOpen)}
+                >
+                  <Slash size={17} />
+                </button>
+                <button
+                  className="icon-button"
+                  disabled={sending || archived || importing || images.length >= MAX_IMAGES}
+                  onClick={() => void attach()}
+                  title={t('添加图片，也可 Ctrl+V 粘贴', 'Attach images, or paste with Ctrl+V')}
+                  aria-label={t('添加图片', 'Attach images')}
+                >
+                  <Paperclip size={18} />
+                </button>
+                <span className="toolbar-separator" />
+                <ModelPicker
+                  openSignal={modelOpen}
+                  models={options}
+                  chosen={chosen}
+                  effort={selectedEffort}
+                  onModel={setModelId}
+                  onEffort={setEffort}
+                  disabled={!options.length || running || sending || speedPending}
+                />
+                {chosen && (
+                  <ModelPicker
+                    models={options}
+                    chosen={chosen}
+                    effort={selectedEffort}
+                    onModel={setModelId}
+                    onEffort={setEffort}
+                    disabled={running || sending || speedPending}
+                    effortOnly
+                  />
+                )}
+                {fastControl}
+              </>
             )}
-            <button
-              type="button"
-              className={`fast-toggle ${fast ? 'active' : ''}`}
-              aria-label={t('Fast 模式', 'Fast mode')}
-              aria-pressed={fast}
-              aria-busy={speedPending}
-              disabled={speedDisabled || (!fast && !fastServiceTier)}
-              title={
-                !fast && !fastServiceTier
-                  ? t('当前模型未提供 Fast 模式', 'Fast mode is not available for this model')
-                  : running
-                    ? t('任务结束后可切换 Fast', 'Change Fast after the running task finishes')
-                    : t(
-                        `${fast ? '关闭' : '开启'} Fast · 更快，额度消耗更高`,
-                        `Turn Fast ${fast ? 'off' : 'on'} · Faster, increased usage`,
-                      )
-              }
-              onClick={() => void changeFast(!fast).catch(onError)}
-            >
-              {speedPending ? <Loader2 size={13} className="spin" /> : <Zap size={13} />}
-              <span>Fast</span>
-              <span className="fast-state">
-                {initialServiceTier === undefined ? 'CLI' : fast ? t('开', 'On') : t('关', 'Off')}
-              </span>
-            </button>
           </div>
           <div className="composer-send-actions">
             {running && (
@@ -490,6 +595,59 @@ export function Composer({
           </div>
         </div>
       </div>
+      {mobile && toolsOpen && (
+        <Dialog
+          title={t('添加与工具', 'Add and tools')}
+          onClose={() => setToolsOpen(false)}
+          className="mobile-tools-sheet"
+        >
+          <div className="mobile-action-list">
+            <button
+              aria-label={t('添加图片', 'Attach images')}
+              disabled={importing || images.length >= MAX_IMAGES}
+              onClick={() => {
+                setToolsOpen(false);
+                void attach();
+              }}
+            >
+              <Paperclip size={20} />
+              <span>
+                {t('添加图片', 'Attach images')}
+                <small>{t('截图、照片或参考图片', 'Screenshots, photos and references')}</small>
+              </span>
+            </button>
+            <button
+              aria-label={t('全部 / 命令', 'All / commands')}
+              disabled={!connected || sending || speedPending}
+              onClick={() => {
+                setToolsOpen(false);
+                setCommandsOpen(true);
+              }}
+            >
+              <Slash size={20} />
+              <span>
+                {t('全部 / 命令', 'All / commands')}
+                <small>
+                  {t('Goal、Plan、Status 与 CLI 完整命令', 'Goal, Plan, Status and the full CLI menu')}
+                </small>
+              </span>
+            </button>
+            <button
+              disabled={running || sending || blocked}
+              onClick={() => {
+                setMode(mode === 'plan' ? 'default' : 'plan');
+                setToolsOpen(false);
+              }}
+            >
+              <ListChecks size={20} />
+              <span>
+                {mode === 'plan' ? t('退出计划模式', 'Exit plan mode') : t('计划模式', 'Plan mode')}
+                <small>{t('先讨论方案，再动手实现', 'Discuss the approach before implementation')}</small>
+              </span>
+            </button>
+          </div>
+        </Dialog>
+      )}
       {steerSent && running && (
         <div className="steer-status" role="status">
           {t('插话已发送，Codex 将在当前任务中处理。', 'Steer sent. Codex will use it in the current task.')}
