@@ -124,8 +124,21 @@ try {
   await desk.connect();
   await cli.start(desk.store.state.settings);
   const thread = (await desk.handle('thread.create', { access: 'danger-full-access' })) as Thread;
-  assert.equal(thread.serviceTier, 'priority', 'new conversations inherit the CLI Fast default');
-  await cli.request('thread/resume', { threadId: thread.id });
+  const initialSettings = await cli.request<{ serviceTier: string | null }>('thread/resume', {
+    threadId: thread.id,
+  });
+  assert.equal(
+    thread.serviceTier,
+    initialSettings.serviceTier,
+    'new conversations inherit the live CLI tier',
+  );
+  // Real Codex does not emit thread/settings/updated for an unchanged mode.
+  // Exercise both changed and repeated selections before sending the first turn.
+  for (const access of ['danger-full-access', 'read-only', 'workspace-write', 'danger-full-access']) {
+    await desk.handle('thread.configure', { threadId: thread.id, access });
+    await desk.handle('thread.configure', { threadId: thread.id, access });
+  }
+  await desk.handle('thread.speed', { threadId: thread.id, serviceTier: 'priority' });
   const { turn } = await cli.request<{ turn: Turn }>('turn/start', {
     threadId: thread.id,
     input: [{ type: 'text', text: 'Initial input from the CLI client.' }],
@@ -205,7 +218,11 @@ try {
   assert.equal(opened.permissionMode, 'danger-full-access');
   assert.equal(opened.approvalPolicy, 'never');
   assert.equal(opened.serviceTier, 'priority');
-  assert.ok(requests.every((request) => request.service_tier === 'priority'));
+  // CLI releases differ in whether a custom provider receives service_tier.
+  // Desk must preserve the real CLI's wire behavior, as well as its live setting.
+  const cliFastTier = requests[0].service_tier ?? null;
+  assert.ok(requests.every((request) => (request.service_tier ?? null) === cliFastTier));
+  await desk.handle('thread.speed', { threadId: thread.id, serviceTier: null });
   await desk.handle('thread.speed', { threadId: thread.id, serviceTier: null });
   const standard = await cli.request<{ serviceTier: string | null; model: string; approvalPolicy: string }>(
     'thread/resume',
@@ -229,6 +246,7 @@ try {
   assert.ok(requests.length > previousRequests);
   assert.ok(requests.slice(previousRequests).every((request) => request.service_tier !== 'priority'));
   await desk.handle('thread.speed', { threadId: thread.id, serviceTier: 'priority' });
+  await desk.handle('thread.speed', { threadId: thread.id, serviceTier: 'priority' });
   assert.equal(
     (
       await cli.request<{ serviceTier: string | null }>('thread/resume', {
@@ -238,6 +256,20 @@ try {
     ).serviceTier,
     'priority',
   );
+  const fastRequests = requests.length;
+  const { turn: fastTurn } = (await desk.handle('turn.start', {
+    threadId: thread.id,
+    text: 'Fast input from Desk must use the same provider tier as the CLI.',
+  })) as { turn: Turn };
+  await until(
+    () =>
+      events.some(
+        (event) => event.method === 'turn/completed' && (event.params?.turn as Turn)?.id === fastTurn.id,
+      ),
+    'Fast turn from Desk did not complete',
+  );
+  assert.ok(requests.length > fastRequests);
+  assert.ok(requests.slice(fastRequests).every((request) => (request.service_tier ?? null) === cliFastTier));
   const checkpoint = events.length;
   await cli.request('thread/settings/update', { threadId: thread.id, serviceTier: null });
   await until(
@@ -256,7 +288,11 @@ try {
     'default',
   );
   const another = (await desk.handle('thread.create', {})) as Thread;
-  assert.equal(another.serviceTier, 'priority', 'per-thread toggles must not change the CLI default');
+  assert.equal(
+    another.serviceTier,
+    initialSettings.serviceTier,
+    'per-thread toggles must not change the CLI default',
+  );
   console.log(
     JSON.stringify({
       passed: true,
@@ -271,6 +307,8 @@ try {
       steeringVisibility:
         'receipt persists before consumption; official clientId reconciles live and saved history',
       fast: 'CLI default inherited; Desk/CLI toggles synchronized; request tiers verified',
+      repeatedSelections: 'all startup modes and Fast on/off confirmed without no-op notifications',
+      customProviderFastTier: cliFastTier,
     }),
   );
 } finally {

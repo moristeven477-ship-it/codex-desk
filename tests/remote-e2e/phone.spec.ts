@@ -16,17 +16,42 @@ async function pair(page: Page) {
   await expect(page.getByRole('heading', { name: 'What shall we build today?' })).toBeVisible();
   await expect(page.locator('.remote-offline')).toHaveCount(0);
 }
-test('phone pairs, sends, chooses settings, browses history and opens the real CLI panel', async ({
+test('phone pairs, reselects existing CLI YOLO, sends, browses history and opens the real CLI panel', async ({
   page,
 }) => {
   await pair(page);
   const composer = page.getByRole('textbox', { name: 'Message Codex' });
   await expect(composer).toBeInViewport();
+  await expect
+    .poll(
+      async () =>
+        (await page.evaluate(() => window.codexDesk!.request<Bootstrap>('bootstrap'))).settings.lastThreadId,
+    )
+    .not.toBe('');
+  const { settings } = await page.evaluate(() => window.codexDesk!.request<Bootstrap>('bootstrap'));
+  // The CLI already has this mode. Re-selecting it on the phone returns an ACK
+  // without a settings notification, just like the production app-server.
+  await f.shared.request('thread/settings/update', {
+    threadId: settings.lastThreadId,
+    sandboxPolicy: { type: 'dangerFullAccess' },
+    approvalPolicy: 'never',
+    approvalsReviewer: 'user',
+  });
   await page.getByRole('radio', { name: /YOLO/ }).check();
   await composer.fill('Hello from Android.');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(page.locator('.user-text')).toHaveText('Hello from Android.');
   await expect(page.locator('.markdown')).toContainText('Your local Codex conversation is working.');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  const actual = await f.shared.request('test.settings', { threadId: settings.lastThreadId });
+  expect(actual.approvalPolicy).toBe('never');
+  expect(actual.sandboxPolicy).toEqual({ type: 'dangerFullAccess' });
+  const sent = await f.shared.request('test.lastTurn');
+  expect(sent).not.toHaveProperty('sandboxPolicy');
+  expect(sent).not.toHaveProperty('approvalPolicy');
+  expect(
+    ((await f.service.handle('thread.read', { threadId: settings.lastThreadId })) as Thread).turns,
+  ).toHaveLength(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/remote/phone-chat.png' });
   await page.getByRole('button', { name: 'Settings', exact: true }).click();

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { homedir } from 'node:os';
 import { mkdir } from 'node:fs/promises';
+import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 import { CodexProcess, RpcError } from './codex';
 import { Store, settingsPatchSchema } from './store';
@@ -179,17 +180,20 @@ export class DeskService extends EventEmitter {
     matches: (settings: JsonObject) => boolean,
     timeoutMessage: string,
   ) {
-    // The response only acknowledges queueing. Use the actual settings event
-    // before enabling another send, and never invent an optimistic CLI setting.
+    // The response only acknowledges queueing. A no-op produces no settings
+    // notification, so also read the live thread after acknowledgement. Neither
+    // the queue response nor our cached settings can confirm a pending change.
     return new Promise<void>((resolve, reject) => {
       let acknowledged = false,
-        applied = false;
+        applied = false,
+        settled = false;
       const cleanup = () => {
+        settled = true;
         clearTimeout(timer);
         this.codex.off('event', receive);
       };
       const finish = () => {
-        if (acknowledged && applied) {
+        if (!settled && acknowledged && applied) {
           cleanup();
           resolve();
         }
@@ -207,11 +211,22 @@ export class DeskService extends EventEmitter {
       this.codex.on('event', receive);
       void this.codex
         .request('thread/settings/update', { threadId, ...overrides })
-        .then(() => {
+        .then(async () => {
           acknowledged = true;
+          finish();
+          if (settled) return;
+          // On an already loaded thread, resume without overrides returns the
+          // authoritative runtime settings without changing CLI permissions.
+          const snapshot = await this.codex.request<JsonObject>('thread/resume', {
+            threadId,
+            excludeTurns: true,
+          });
+          if (settled) return;
+          applied = matches(snapshot);
           finish();
         })
         .catch((error) => {
+          if (settled) return;
           cleanup();
           reject(error);
         });
@@ -498,7 +513,11 @@ export class DeskService extends EventEmitter {
           .object({ threadId: text, access: z.enum(['read-only', 'workspace-write', 'danger-full-access']) })
           .parse(params);
         await this.resume(args.threadId);
-        if (this.activeTurns.has(args.threadId))
+        const { thread } = await this.codex.request<{ thread: Thread }>('thread/read', {
+          threadId: args.threadId,
+          includeTurns: false,
+        });
+        if (this.activeTurns.has(args.threadId) || thread.status.type === 'active')
           throw new Error('Wait for the running turn before changing startup mode.');
         const overrides = permissionOverride(args.access);
         await this.updateThreadSettings(
@@ -507,7 +526,12 @@ export class DeskService extends EventEmitter {
           (incoming) => {
             const settings = threadPermissions(incoming);
             return (
-              settings.permissionMode === args.access && settings.approvalPolicy === overrides.approvalPolicy
+              settings.permissionMode === args.access &&
+              settings.approvalPolicy === overrides.approvalPolicy &&
+              settings.approvalsReviewer === overrides.approvalsReviewer &&
+              Object.entries(overrides.sandboxPolicy as JsonObject).every(([key, value]) =>
+                isDeepStrictEqual(settings.sandboxPolicy?.[key], value),
+              )
             );
           },
           'Codex has not confirmed the startup mode. Try selecting it again.',
@@ -519,7 +543,11 @@ export class DeskService extends EventEmitter {
           .object({ threadId: text, serviceTier: z.enum(['priority', 'fast']).nullable() })
           .parse(params);
         await this.resume(args.threadId);
-        if (this.activeTurns.has(args.threadId))
+        const { thread } = await this.codex.request<{ thread: Thread }>('thread/read', {
+          threadId: args.threadId,
+          includeTurns: false,
+        });
+        if (this.activeTurns.has(args.threadId) || thread.status.type === 'active')
           throw new Error('Wait for the running turn before changing Fast mode.');
         await this.updateThreadSettings(
           args.threadId,

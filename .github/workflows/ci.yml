@@ -29,6 +29,24 @@ jobs:
         with:
           name: test-results
           path: test-results/
+  cli:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        version: ['0.154.0', '0.158.0']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Validate the real CLI with an isolated local model fixture
+        env:
+          CLI_VERSION: ${{ matrix.version }}
+        run: |
+          npm install --prefix "$RUNNER_TEMP/codex-cli" "@openai/codex@$CLI_VERSION" --no-audit --no-fund
+          DESK_LIVE_BINARY="$RUNNER_TEMP/codex-cli/node_modules/.bin/codex" npm run test:steer
   android:
     runs-on: ubuntu-24.04
     env:

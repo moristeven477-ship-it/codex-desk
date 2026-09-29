@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createInterface } from 'node:readline';
 import { appendFileSync } from 'node:fs';
+import { isDeepStrictEqual } from 'node:util';
 if (process.argv.includes('--version')) {
   console.log('codex-cli 0.154.0-fixture');
   process.exit(0);
@@ -225,7 +226,6 @@ createInterface({ input: process.stdin }).on('line', (line) => {
           approvalPolicy: currentSettings(thread).approvalPolicy,
           approvalsReviewer: currentSettings(thread).approvalsReviewer,
         });
-        notify('thread/settings/updated', { threadId: thread.id, threadSettings: currentSettings(thread) });
       }
       break;
     case 'thread/settings/update': {
@@ -233,11 +233,14 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         write({ id: message.id, error: { code: -32000, message: settingsError } });
         break;
       }
-      const next = { ...currentSettings(thread), ...p };
+      const { threadId, ...patch } = p;
+      const next = { ...currentSettings(thread), ...patch };
       // Current Codex versions canonicalize an explicit clear to standard speed.
       if (p.serviceTier === null) next.serviceTier = 'default';
       reply({});
       const apply = () => {
+        // Real Codex is silent when an update leaves the settings unchanged.
+        if (isDeepStrictEqual(currentSettings(thread), next)) return;
         settings.set(thread.id, next);
         notify('thread/settings/updated', { threadId: thread.id, threadSettings: next });
       };

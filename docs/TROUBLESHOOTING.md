@@ -41,6 +41,16 @@ The normal endpoint is `$CODEX_HOME/app-server-control/app-server-control.sock`.
 
 On npm installations, `codex app-server daemon start` can report that the managed standalone install is missing. Desk starts the official Unix listener directly in that case; no replacement Codex installation is necessary. Its startup log is `app-server-control/codex-desk-server.log` under Codex home. Reconnect in Settings after addressing a startup failure. Desk only removes a stale socket it previously created when its recorded process has exited.
 
+## Startup mode blocks sending / 启动模式确认失败，无法发送
+
+If Desk 0.4.0 reports **Codex has not confirmed the startup mode**, update the **computer app to 0.4.1 or later**. Codex does not emit a settings-change notification when you select an already active mode. Desk now also reads the live CLI settings to confirm that selection. Fast on/off uses the same fix. Changed permissions still require confirmation from Codex.
+
+The Android 0.4.0 APK can use this fix without reinstallation. After updating the computer, reopen the conversation on the phone, or select the startup mode again, then send the saved draft. The app never automatically resends a message.
+
+若 0.4.0 提示上述错误，请把**电脑端升级到 0.4.1 或更新版本**。CLI 已处于所选模式时不会重复发送设置变更通知，旧版 Desk 因而误报超时。修复后会回读 CLI 的实际设置，Fast 开关也一并修复；真正的权限变更仍须由 CLI 确认。
+
+安卓 0.4.0 无需重装。电脑更新后，在手机上重新进入原会话，或重新选择启动模式，再发送保留的草稿即可。程序不会自动重发消息。
+
 ## Slash menu / 命令菜单
 
 Click **/** next to the attachment button. Commands marked **CLI** open the real terminal inside Desk. Wait for its input prompt, click **Insert command**, then Enter. If the CLI displays a question or picker first, answer that before inserting the command. Terminal-specific shortcuts, Vim mode, colors, and pets belong to the CLI surface. Platform / debug / experimental commands keep their upstream restrictions.

@@ -423,6 +423,100 @@ test('Fast inherits CLI state and only explicit changes update the shared servic
       f.desk.handle('thread.speed', { threadId, serviceTier: null }),
       /Wait for the running turn/,
     );
+    await assert.rejects(
+      f.desk.handle('thread.configure', { threadId, access: 'danger-full-access' }),
+      /Wait for the running turn/,
+    );
+  } finally {
+    await f.close();
+  }
+});
+
+test('startup mode readback waits for changed sandbox details even when the mode name is unchanged', async () => {
+  const f = await fixture();
+  try {
+    const threadId = 'fixture-history';
+    await f.cli.request('thread/settings/update', {
+      threadId,
+      sandboxPolicy: {
+        type: 'workspaceWrite',
+        writableRoots: ['/synthetic/extra-root'],
+        networkAccess: true,
+        excludeTmpdirEnvVar: false,
+        excludeSlashTmp: false,
+      },
+    });
+    await f.cli.request('test.settingsDelay', { milliseconds: 150 });
+    let finished = false;
+    const change = f.desk.handle('thread.configure', { threadId, access: 'workspace-write' }).then(() => {
+      finished = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(finished, false, 'matching only the mode name would confirm stale permissions');
+    await change;
+    const actual = await f.cli.request<Record<string, unknown>>('test.settings', { threadId });
+    assert.deepEqual(actual.sandboxPolicy, {
+      type: 'workspaceWrite',
+      writableRoots: [],
+      networkAccess: false,
+      excludeTmpdirEnvVar: false,
+      excludeSlashTmp: false,
+    });
+  } finally {
+    await f.close();
+  }
+});
+
+test('reselecting applied startup modes confirms live CLI state even without a settings event', async () => {
+  const f = await fixture();
+  try {
+    const thread = (await f.desk.handle('thread.create', {})) as Thread;
+    let updates = 0;
+    f.desk.on('event', (event: CodexEvent) => {
+      if (event.method === 'thread/settings/updated' && event.params?.threadId === thread.id) updates++;
+    });
+    for (const access of ['danger-full-access', 'read-only', 'workspace-write']) {
+      await f.desk.handle('thread.configure', { threadId: thread.id, access });
+      const count = updates;
+      const before = await f.cli.request('test.settings', { threadId: thread.id });
+      await f.desk.handle('thread.configure', { threadId: thread.id, access });
+      assert.equal(updates, count, 'a repeated selection must succeed without a settings notification');
+      assert.deepEqual(await f.cli.request('test.settings', { threadId: thread.id }), before);
+    }
+    await f.desk.handle('thread.configure', { threadId: thread.id, access: 'danger-full-access' });
+    const done = eventWhere(f.desk, (event) => event.method === 'turn/completed');
+    await f.desk.handle('turn.start', { threadId: thread.id, text: 'Send after reselecting startup mode' });
+    await done;
+    const sent = await f.cli.request<Record<string, unknown>>('test.lastTurn');
+    assert.ok(!('sandboxPolicy' in sent));
+    assert.ok(!('approvalPolicy' in sent));
+    const actual = await f.cli.request<Record<string, unknown>>('test.settings', { threadId: thread.id });
+    assert.equal(actual.approvalPolicy, 'never');
+    assert.deepEqual(actual.sandboxPolicy, { type: 'dangerFullAccess' });
+  } finally {
+    await f.close();
+  }
+});
+
+test('reselecting Fast on or off succeeds without notifications but still propagates CLI errors', async () => {
+  const f = await fixture();
+  try {
+    const threadId = 'fixture-history';
+    for (const serviceTier of ['priority', null]) {
+      await f.desk.handle('thread.speed', { threadId, serviceTier });
+      const before = await f.cli.request('test.settings', { threadId });
+      await f.desk.handle('thread.speed', { threadId, serviceTier });
+      assert.deepEqual(await f.cli.request('test.settings', { threadId }), before);
+    }
+    await f.cli.request('test.settingsError', { message: 'Settings rejected by CLI' });
+    await assert.rejects(
+      f.desk.handle('thread.speed', { threadId, serviceTier: null }),
+      /Settings rejected by CLI/,
+    );
+    await assert.rejects(
+      f.desk.handle('thread.configure', { threadId, access: 'danger-full-access' }),
+      /Settings rejected by CLI/,
+    );
   } finally {
     await f.close();
   }
