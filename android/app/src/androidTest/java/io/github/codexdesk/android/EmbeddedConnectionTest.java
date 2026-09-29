@@ -123,9 +123,12 @@ public class EmbeddedConnectionTest {
                 page("send enabled", "!!document.querySelector('.send-button:not(:disabled)')");
                 js("document.querySelector('.send-button').click()");
             }
-            String received = "document.body.innerText.includes('Your local Codex conversation is working.') && document.querySelectorAll('.user-text').length===1 && document.querySelector('.user-text').textContent==='"+MESSAGE+"' && !document.querySelector('.remote-offline')";
+            String received = "document.body.innerText.includes('Your local Codex conversation is working.') && document.querySelectorAll('.user-text').length===1 && document.querySelector('.user-text').textContent==='"+MESSAGE+"' && !document.querySelector('.remote-offline') && !document.querySelector('.history-sync-status')";
             page("one reply through encrypted tailnet", received);
             page("sent draft cleared", "document.querySelector('.composer textarea')?.value===''");
+            page("paired cache identity saved on this phone", "!!JSON.parse(localStorage.getItem('codex-desk:phone-session')||'null')?.id");
+            js("(()=>{window.__savedHistory=false;const check=async()=>{const s=window.codexDesk.historyStorage;const boot=await s.read('bootstrap');const thread=boot&&await s.read('thread:'+boot.settings.lastThreadId);window.__savedHistory=!!thread?.turns.some(t=>t.items.some(i=>i.type==='userMessage'&&i.content.some(c=>c.text==='"+MESSAGE+"')));if(!window.__savedHistory)setTimeout(check,200)};check();return true})()");
+            page(resume ? "phone history persists across process restart" : "phone conversation saved in IndexedDB", "window.__savedHistory===true");
             page("compact mobile shell loaded", "navigator.userAgent.includes('CodexDeskAndroid/') && !!document.querySelector('.mobile-header') && document.querySelector('.composer').getBoundingClientRect().height<=105");
             activity.onActivity(screen -> {
                 Button nativeSettings = find(screen.getWindow().getDecorView(), Button.class, screen.getString(R.string.connection_settings));

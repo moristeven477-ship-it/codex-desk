@@ -209,6 +209,7 @@ export function MessageItem({ item, onError }: { item: Item; onError: (error: un
 export function Chat({
   thread,
   loading,
+  syncing = false,
   running,
   revealMessage,
   onOlder,
@@ -219,6 +220,7 @@ export function Chat({
 }: {
   thread?: Thread;
   loading: boolean;
+  syncing?: boolean;
   running: boolean;
   revealMessage: number;
   onOlder: () => Promise<void>;
@@ -292,7 +294,13 @@ export function Chat({
               {t('加载更早的消息', 'Load earlier messages')}
             </button>
           )}
-          {loading ? (
+          {syncing && thread && (
+            <div className="history-sync-status" role="status">
+              <Loader2 size={13} className="spin" />
+              {t('已显示本地记录，正在同步…', 'Saved conversation shown · Syncing…')}
+            </div>
+          )}
+          {loading && !thread ? (
             <div className="chat-loading">
               <Loader2 className="spin" size={20} />
               <span>{t('读取会话…', 'Loading conversation…')}</span>

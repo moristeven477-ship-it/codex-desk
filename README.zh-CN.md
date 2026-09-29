@@ -41,7 +41,9 @@ _截图使用测试项目，应用实际连接本机 Codex CLI。_
 
 ## 手机界面
 
-手机使用单层会话页头和随文字增高的紧凑输入框。点击 **＋** 添加图片、查看全部 `/` 命令或切换 Plan；点击模型名称，在底部面板切换模型、思考强度、权限与 Fast。**右上角 ⋯ → 设置** 保留平滑字号滑块、主题与语言。安卓返回键先关闭当前面板。电脑端与 APK 均更新至 **0.5.0** 后，连接设置也收进菜单，不再占用额外顶栏。[手机安装与配对](docs/ANDROID.md#简体中文)。
+手机使用单层会话页头和随文字增高的紧凑输入框。点击 **＋** 添加图片、查看全部 `/` 命令或切换 Plan；点击模型名称，在底部面板切换模型、思考强度、权限与 Fast。**右上角 ⋯ → 设置** 保留平滑字号滑块、主题与语言。安卓返回键先关闭当前面板。电脑端与 APK 均更新至 **0.6.0** 后，连接设置也收进菜单，不再占用额外顶栏。[手机安装与配对](docs/ANDROID.md#简体中文)。
+
+已打开的会话和历史列表会保存在手机，关闭再打开仍可复用。先显示本地消息，再同步 CLI 的最新记录；Goal 的读取也不会挡住聊天内容。每次配对最多缓存 80 个会话 / 50 MiB，自动淘汰最久未使用的记录。**⋯ → 设置 → 手机本地缓存** 可查看占用或清除缓存，不会删除电脑记录和手机草稿。未读会话仍需连接电脑；本次不提供完全离线启动 App 的功能。
 
 <img src="docs/screenshots/mobile-home-light-zh.png" width="260" alt="手机浅色界面" /> <img src="docs/screenshots/mobile-session-sheet.png" width="260" alt="手机会话设置面板" />
 
@@ -65,7 +67,7 @@ codex login
 从 [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest) 下载 `.deb`：
 
 ```bash
-sudo apt install ./codex-desk-0.5.0-amd64.deb
+sudo apt install ./codex-desk-0.6.0-amd64.deb
 ```
 
 安装后在 Ubuntu 应用菜单中打开 **Codex Desk**，或运行 `codex-desk`。
@@ -73,14 +75,14 @@ sudo apt install ./codex-desk-0.5.0-amd64.deb
 也可下载便携 AppImage：
 
 ```bash
-chmod +x codex-desk-0.5.0-x86_64.AppImage
-./codex-desk-0.5.0-x86_64.AppImage
+chmod +x codex-desk-0.6.0-x86_64.AppImage
+./codex-desk-0.6.0-x86_64.AppImage
 ```
 
 没有 FUSE 时：
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.5.0-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.6.0-x86_64.AppImage
 ```
 
 Ubuntu 24.04 优先使用 `.deb`，安装器包含 Electron 的 AppArmor 集成。遇到沙箱错误时参考[故障排查](docs/TROUBLESHOOTING.md)，不要通过关闭沙箱解决。

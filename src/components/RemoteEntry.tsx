@@ -2,6 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { App } from '../App';
 import { RemoteBridge } from '../lib/remoteBridge';
 import { Smartphone, Loader2, Link2 } from 'lucide-react';
+import {
+  forgetPhoneSession,
+  phoneSession,
+  rememberPhoneSession,
+  savedPhoneSession,
+  type PhoneSession,
+} from '../lib/historyStorage';
 
 export function RemoteEntry() {
   const [ready, setReady] = useState(false),
@@ -11,11 +18,21 @@ export function RemoteEntry() {
     [name, setName] = useState('Android');
   const [zh, setZh] = useState(navigator.language.startsWith('zh'));
   const bridge = useRef<RemoteBridge | undefined>(undefined);
+  const sessionId = useRef<string | undefined>(undefined);
+  const [identity, setIdentity] = useState('');
   const t = (cn: string, en: string) => (zh ? cn : en);
-  function connected() {
+  function connected(session?: PhoneSession) {
+    if (bridge.current && sessionId.current === session?.id) return;
+    if (bridge.current && sessionId.current !== session?.id) {
+      void bridge.current.historyStorage?.invalidate();
+      forgetPhoneSession();
+    }
     bridge.current?.dispose();
-    bridge.current = new RemoteBridge();
+    if (session) rememberPhoneSession(session);
+    sessionId.current = session?.id;
+    bridge.current = new RemoteBridge(session);
     window.codexDesk = bridge.current;
+    setIdentity(session?.id ?? 'paired');
     setReady(true);
   }
   useEffect(() => {
@@ -34,19 +51,37 @@ export function RemoteEntry() {
     viewport?.addEventListener('resize', resize);
     viewport?.addEventListener('scroll', resize);
     let disposed = false;
+    let revision = 0;
     const unpair = () => {
+      ++revision;
+      void bridge.current?.historyStorage?.invalidate();
       bridge.current?.dispose();
+      bridge.current = undefined;
+      window.codexDesk = undefined;
+      sessionId.current = undefined;
+      forgetPhoneSession();
       setReady(false);
       setCode('');
       setError('');
     };
     window.addEventListener('desk:pair-required', unpair);
-    void fetch('/v1/session')
-      .then((response) => {
-        if (!disposed && response.ok) connected();
+    const cachedSession = savedPhoneSession();
+    if (cachedSession) connected(cachedSession);
+    const initialRevision = revision;
+    void fetch('/v1/session', { signal: AbortSignal.timeout(10_000) })
+      .then(async (response) => {
+        if (disposed || initialRevision !== revision) return;
+        if (response.status === 401) {
+          unpair();
+          return;
+        }
+        if (response.ok) {
+          const session = phoneSession(await response.json());
+          if (!disposed && initialRevision === revision) connected(session);
+        }
       })
       .catch(() => {
-        if (!disposed) setError('无法连接电脑 / Could not connect to the computer.');
+        if (!disposed && !bridge.current) setError('无法连接电脑 / Could not connect to the computer.');
       })
       .finally(() => {
         if (!disposed) setBusy(false);
@@ -60,7 +95,7 @@ export function RemoteEntry() {
       viewport?.removeEventListener('scroll', resize);
     };
   }, []);
-  if (ready) return <App />;
+  if (ready) return <App key={identity} />;
   return (
     <main className="remote-pair">
       <img src="./icon.svg" alt="" />
@@ -89,7 +124,7 @@ export function RemoteEntry() {
             .then(async (response) => {
               const result = await response.json();
               if (!response.ok) throw new Error(result.error);
-              connected();
+              connected(phoneSession(result.session));
             })
             .catch((e) => setError(String(e.message)))
             .finally(() => setBusy(false));

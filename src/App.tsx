@@ -128,7 +128,7 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
   const project = thread
     ? boot.projects.find((p) => p.path === thread.cwd)
     : boot.projects.find((p) => p.id === projectId);
-  const ready = boot.connection.phase === 'ready' && desk.remoteOnline,
+  const ready = boot.connection.phase === 'ready' && desk.remoteOnline && (!remote || desk.historyReady),
     turn = activeTurn(thread),
     running = !!turn;
   const currentApprovals = desk.approvals.filter((a) => a.params.threadId === threadId);
@@ -712,7 +712,7 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
               }}
             />
           )}
-          {!ready && !desk.error && (
+          {!ready && !desk.error && !(remote && thread) && (
             <div className="connection-banner">
               {boot.connection.phase === 'starting' ? (
                 <>
@@ -732,6 +732,7 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
             <Chat
               thread={thread}
               loading={desk.loading}
+              syncing={remote && !!thread && !desk.historyReady}
               running={running}
               revealMessage={desk.revealMessage}
               onOlder={desk.older}

@@ -193,6 +193,7 @@ export interface ImageUpload {
 }
 export interface NativeBridge {
   remote?: boolean;
+  historyStorage?: import('./history').HistoryStorage;
   request<T = unknown>(method: string, params?: JsonObject): Promise<T>;
   subscribe(listener: (event: CodexEvent) => void): () => void;
   pickDirectory(): Promise<string | null>;

@@ -405,13 +405,16 @@ export class RemoteGateway {
           'Set-Cookie',
           `cd_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000${secure ? '; Secure' : ''}`,
         );
-        this.json(response, 200, { ok: true });
+        this.json(response, 200, {
+          ok: true,
+          session: { id: device.id, name: device.name, expiresAt: device.expiresAt },
+        });
         return;
       }
       if (url.pathname.startsWith('/v1/')) {
         const device = this.authenticate(request);
         if (request.method === 'GET' && url.pathname === '/v1/session') {
-          this.json(response, 200, { name: device.name, expiresAt: device.expiresAt });
+          this.json(response, 200, { id: device.id, name: device.name, expiresAt: device.expiresAt });
           return;
         }
         if (request.method === 'POST' && url.pathname === '/v1/logout') {

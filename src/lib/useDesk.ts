@@ -20,6 +20,7 @@ import { threadPermissions } from '../shared/permissions';
 import { DEFAULT_FONT_SIZE } from '../shared/appearance';
 import { usePendingSteers } from './usePendingSteers';
 import { reconcileSteerEvent, reconcileSteerHistory, setSteerPhase } from '../shared/steering';
+import { mergeHistory } from '../shared/history';
 
 export async function request<T = unknown>(method: string, params?: JsonObject): Promise<T> {
   if (!window.codexDesk) throw new Error('Open Codex Desk using the desktop application.');
@@ -46,6 +47,8 @@ const empty: Bootstrap = {
 };
 
 export function useDesk() {
+  const remote = !!window.codexDesk?.remote;
+  const storage = useRef(window.codexDesk?.historyStorage).current;
   const [completion, setCompletion] = useState<CompletionNotice>();
   const dismissCompletion = useCallback(() => setCompletion(undefined), []);
   const completions = useRef(new CompletionTracker());
@@ -65,7 +68,15 @@ export function useDesk() {
   const [nativeTerminals, setNativeTerminals] = useState<
     Record<string, { state: 'preparing' | 'ready' | 'waiting' | 'error'; error?: string }>
   >({});
-  const [cache, setCache] = useState<Record<string, Thread>>({});
+  const [cache, renderCache] = useState<Record<string, Thread>>({});
+  const cacheRef = useRef(cache);
+  const setCache = useCallback((change: (old: Record<string, Thread>) => Record<string, Thread>) => {
+    const next = change(cacheRef.current);
+    cacheRef.current = next;
+    renderCache(next);
+  }, []);
+  const [historyReady, setHistoryReady] = useState(!remote);
+  const persisted = useRef<Record<string, Thread>>({});
   const { entries: pendingSteers, saved: steersSaved, update: updateSteers } = usePendingSteers();
   const [revealMessage, setRevealMessage] = useState({ threadId: '', revision: 0 });
   const [approvals, setApprovals] = useState<Approval[]>([]);
@@ -77,8 +88,9 @@ export function useDesk() {
   const [search, setSearch] = useState('');
   const [usage, setUsage] = useState<Record<string, { total: number; context: number; limit: number }>>({});
   const [plans, setPlans] = useState<Record<string, { step: string; status: string }[]>>({});
-  const current = useRef({ boot, projectId, threadId, archived, search });
-  current.current = { boot, projectId, threadId, archived, search };
+  const current = useRef({ boot, projectId, threadId, archived, search, remoteOnline });
+  current.current = { boot, projectId, threadId, archived, search, remoteOnline };
+  const shownList = useRef('');
   const pendingEvents = useRef(new Map<string, CodexEvent[]>());
   const listGeneration = useRef(0);
   const selectionGeneration = useRef(0);
@@ -105,25 +117,45 @@ export function useDesk() {
     async (append = false, nextCursor?: string | null) => {
       const snapshot = current.current;
       if (snapshot.boot.connection.phase !== 'ready') return;
+      if (remote && !snapshot.remoteOnline) return;
       const generation = ++listGeneration.current;
       try {
         const project = snapshot.boot.projects.find((p) => p.id === snapshot.projectId);
-        const result = await request<{ data: Thread[]; nextCursor: string | null }>('threads.list', {
+        const query = {
           ...(project ? { cwd: project.path } : {}),
           archived: snapshot.archived,
           search: snapshot.search,
+        };
+        const key = `list:${JSON.stringify(query)}`;
+        let completed = false;
+        if (storage && !append && shownList.current !== key) {
+          shownList.current = key;
+          void storage.read<{ data: Thread[]; nextCursor: string | null }>(key).then((saved) => {
+            if (saved && !completed && generation === listGeneration.current) {
+              setThreads(saved.data);
+              setCursor(saved.nextCursor);
+            }
+          });
+        }
+        const result = await request<{ data: Thread[]; nextCursor: string | null }>('threads.list', {
+          ...query,
           cursor: append ? (nextCursor ?? null) : null,
         });
+        completed = true;
         if (generation !== listGeneration.current) return;
-        setThreads((old) =>
-          append ? [...old, ...result.data.filter((t) => !old.some((o) => o.id === t.id))] : result.data,
-        );
+        setThreads((old) => {
+          const data = append
+            ? [...old, ...result.data.filter((t) => !old.some((o) => o.id === t.id))]
+            : result.data;
+          if (storage) void storage.write(key, { data, nextCursor: result.nextCursor });
+          return data;
+        });
         setCursor(result.nextCursor);
       } catch (e) {
         fail(e);
       }
     },
-    [fail],
+    [fail, remote, storage],
   );
 
   const openThread = useCallback(
@@ -138,22 +170,51 @@ export function useDesk() {
         setNewConversation(false);
         setCompositionKey(id);
         setLoading(true);
+        if (remote) setHistoryReady(false);
       }
-      const buffered: CodexEvent[] = [];
+      const buffered = pendingEvents.current.get(id) ?? [];
       pendingEvents.current.set(id, buffered);
+      let received = false;
+      if (!cacheRef.current[id] && storage) {
+        void storage.read<Thread>(`thread:${id}`).then((saved) => {
+          if (
+            !saved ||
+            saved.id !== id ||
+            received ||
+            generation !== selectionGeneration.current ||
+            cacheRef.current[id]
+          )
+            return;
+          persisted.current[id] = saved;
+          setCache((old) => ({ ...old, [id]: saved }));
+        });
+      }
       try {
         const thread = await request<Thread>('thread.open', {
           threadId: id,
           archived: current.current.archived,
         });
-        try {
-          thread.goal = (await request<{ goal: ThreadGoal | null }>('goal.get', { threadId: id })).goal;
-        } catch {
-          /* Older Codex versions may not expose goals. */
-        }
+        received = true;
         const hydrated = buffered.reduce(reduceThread, thread);
         if (generation !== selectionGeneration.current) return;
-        setCache((old) => ({ ...old, [id]: hydrated }));
+        setCache((old) => ({
+          ...old,
+          [id]: {
+            ...mergeHistory(old[id], hydrated),
+            ...(hydrated.goal === undefined && old[id]?.goal !== undefined ? { goal: old[id].goal } : {}),
+          },
+        }));
+        if (current.current.threadId === id) setHistoryReady(true);
+        // Goals must not delay displaying a downloaded conversation. Ignore a
+        // delayed goal response if a newer live goal event arrives first.
+        const goalAtRead = cacheRef.current[id]?.goal;
+        void request<{ goal: ThreadGoal | null }>('goal.get', { threadId: id })
+          .then(({ goal }) => {
+            setCache((old) =>
+              old[id] && old[id].goal === goalAtRead ? { ...old, [id]: { ...old[id], goal } } : old,
+            );
+          })
+          .catch(() => {});
         updateSteers((entries) => reconcileSteerHistory(entries, hydrated));
         if (!background) setNewConversation(!hydrated.turns.length);
         if (!current.current.archived && (!background || thread.syncState === 'live'))
@@ -169,30 +230,106 @@ export function useDesk() {
         if (!background && generation === selectionGeneration.current) setLoading(false);
       }
     },
-    [fail, prepareTerminal, updateSteers],
+    [fail, prepareTerminal, updateSteers, remote, storage, setCache],
   );
+
+  // Coalesce streaming updates into at most one durable snapshot per second.
+  // IndexedDB writes never block rendering, typing or sending a message.
+  const dirty = useRef(new Map<string, Thread>());
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const flushHistory = useCallback(() => {
+    clearTimeout(persistTimer.current);
+    persistTimer.current = undefined;
+    if (!storage) return;
+    for (const [id, thread] of dirty.current) void storage.write(`thread:${id}`, thread);
+    dirty.current.clear();
+  }, [storage]);
+  useEffect(() => {
+    if (!storage) return;
+    for (const [id, thread] of Object.entries(cache)) {
+      if (persisted.current[id] === thread) continue;
+      persisted.current[id] = thread;
+      dirty.current.set(id, thread);
+    }
+    if (dirty.current.size && !persistTimer.current) persistTimer.current = setTimeout(flushHistory, 700);
+  }, [cache, storage, flushHistory]);
+  useEffect(() => {
+    const cleared = () => {
+      clearTimeout(persistTimer.current);
+      persistTimer.current = undefined;
+      dirty.current.clear();
+      persisted.current = { ...cacheRef.current };
+    };
+    window.addEventListener('pagehide', flushHistory);
+    window.addEventListener('desk:history-cleared', cleared);
+    return () => {
+      window.removeEventListener('pagehide', flushHistory);
+      window.removeEventListener('desk:history-cleared', cleared);
+      flushHistory();
+    };
+  }, [flushHistory]);
+  useEffect(() => {
+    if (storage && boot.connection.phase === 'ready')
+      void storage.write('bootstrap', {
+        ...boot,
+        settings: { ...boot.settings, lastProjectId: projectId, lastThreadId: threadId },
+        connection: { phase: 'stopped' },
+        account: null,
+        approvals: [],
+      } satisfies Bootstrap);
+  }, [boot, projectId, threadId, storage]);
 
   useEffect(() => {
     let disposed = false;
+    let initialized = false;
+    let booting: Promise<void> | undefined;
+    const initialize = () => {
+      if (booting) return booting;
+      const generation = selectionGeneration.current;
+      booting = (async () => {
+        try {
+          let data = await request<Bootstrap>('bootstrap');
+          if (disposed) return;
+          if (data.connection.phase !== 'ready') data = await request<Bootstrap>('codex.connect');
+          if (disposed) return;
+          if (!initialized && generation === selectionGeneration.current) {
+            current.current.projectId = data.settings.lastProjectId;
+            setProjectId(data.settings.lastProjectId);
+          }
+          current.current.boot = data;
+          setBoot(data);
+          setApprovals(data.approvals);
+          if (
+            !initialized &&
+            generation === selectionGeneration.current &&
+            !current.current.threadId &&
+            data.settings.lastThreadId
+          )
+            void openThread(data.settings.lastThreadId);
+          else if (current.current.threadId)
+            void openThread(current.current.threadId, !!cacheRef.current[current.current.threadId]);
+          initialized = true;
+          void refresh();
+        } catch (error) {
+          if (!disposed) fail(error);
+        } finally {
+          booting = undefined;
+        }
+      })();
+      return booting;
+    };
     const unsubscribe = window.codexDesk?.subscribe((event) => {
       if (disposed) return;
       if (event.kind === 'navigate' && event.threadId) void openThread(event.threadId);
       const done = completions.current.receive(event);
       if (done) setCompletion(done);
       if (event.kind === 'remote') {
+        current.current.remoteOnline = !!event.online;
         setRemoteOnline(!!event.online);
+        if (!event.online) setHistoryReady(false);
         // A mobile network outage does not interrupt the computer's task.
         // Hydrate authoritative history after reconnect, buffering live events as usual.
-        if (event.online)
-          void request<Bootstrap>('bootstrap')
-            .then((data) => {
-              if (disposed) return;
-              setBoot(data);
-              setApprovals(data.approvals);
-              void refresh();
-              if (current.current.threadId) void openThread(current.current.threadId, true);
-            })
-            .catch(fail);
+        if (event.online) void initialize();
         return;
       }
       if (event.kind === 'connection' && event.connection) {
@@ -270,26 +407,48 @@ export function useDesk() {
             .catch(fail);
       }
     });
-    void (async () => {
-      try {
-        let data = await request<Bootstrap>('bootstrap');
-        if (disposed) return;
-        setBoot(data);
-        setProjectId(data.settings.lastProjectId);
-        if (data.connection.phase !== 'ready') data = await request<Bootstrap>('codex.connect');
-        if (disposed) return;
-        setBoot(data);
-        setApprovals(data.approvals);
-        if (data.settings.lastThreadId) void openThread(data.settings.lastThreadId);
-      } catch (e) {
-        if (!disposed) fail(e);
-      }
-    })();
+    // The local read races the network. It is a preview only: no approvals or
+    // writable CLI settings are restored from disk, and fresh data always wins.
+    if (storage) {
+      const generation = selectionGeneration.current;
+      void storage.read<Bootstrap>('bootstrap').then(async (saved) => {
+        if (!saved || disposed || initialized || generation !== selectionGeneration.current) return;
+        const id = saved.settings.lastThreadId;
+        const project = saved.projects.find((item) => item.id === saved.settings.lastProjectId);
+        const key = `list:${JSON.stringify({ ...(project ? { cwd: project.path } : {}), archived: false, search: '' })}`;
+        const [thread, list] = await Promise.all([
+          id ? storage.read<Thread>(`thread:${id}`) : undefined,
+          storage.read<{ data: Thread[]; nextCursor: string | null }>(key),
+        ]);
+        if (disposed || initialized || generation !== selectionGeneration.current) return;
+        const preview = { ...saved, connection: { phase: 'stopped' as const }, approvals: [] };
+        current.current.boot = preview;
+        current.current.projectId = saved.settings.lastProjectId;
+        setBoot(preview);
+        setProjectId(saved.settings.lastProjectId);
+        if (list) {
+          shownList.current = key;
+          setThreads(list.data);
+          setCursor(list.nextCursor);
+        }
+        if (id) {
+          current.current.threadId = id;
+          setThreadId(id);
+          setCompositionKey(id);
+          setNewConversation(thread ? !thread.turns.length : false);
+          if (thread?.id === id) {
+            persisted.current[id] = thread;
+            setCache((old) => (old[id] ? old : { ...old, [id]: thread }));
+          }
+        }
+      });
+    }
+    void initialize();
     return () => {
       disposed = true;
       unsubscribe?.();
     };
-  }, [fail, openThread, refresh, updateSteers]);
+  }, [fail, openThread, refresh, updateSteers, storage, setCache]);
 
   useEffect(() => {
     const timer = setTimeout(() => void refresh(), search ? 220 : 0);
@@ -300,7 +459,8 @@ export function useDesk() {
       !threadId ||
       cache[threadId]?.syncState !== 'external' ||
       archived ||
-      boot.connection.phase !== 'ready'
+      boot.connection.phase !== 'ready' ||
+      (remote && !remoteOnline)
     )
       return;
     let pending = false;
@@ -312,11 +472,22 @@ export function useDesk() {
       });
     }, 2000);
     return () => clearInterval(timer);
-  }, [threadId, cache[threadId]?.syncState, archived, boot.connection.phase, openThread]);
+  }, [
+    threadId,
+    cache[threadId]?.syncState,
+    archived,
+    boot.connection.phase,
+    openThread,
+    remote,
+    remoteOnline,
+  ]);
   useEffect(() => {
-    const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') void refresh();
-    }, 3000);
+    const timer = setInterval(
+      () => {
+        if (document.visibilityState === 'visible') void refresh();
+      },
+      remote ? 15_000 : 3000,
+    );
     const focus = () => {
       void refresh();
     };
@@ -325,7 +496,7 @@ export function useDesk() {
       clearInterval(timer);
       window.removeEventListener('focus', focus);
     };
-  }, [refresh]);
+  }, [refresh, remote]);
 
   function selectProject(id: string) {
     setStartupSelection(undefined);
@@ -387,6 +558,7 @@ export function useDesk() {
       if (generation !== selectionGeneration.current) throw new Error('Conversation selection changed.');
       current.current.threadId = thread.id;
       setThreadId(thread.id);
+      setHistoryReady(true);
       setCache((old) => ({ ...old, [thread.id]: thread }));
       setThreads((old) => [thread, ...old.filter((item) => item.id !== thread.id)]);
       await request('settings.update', { lastThreadId: thread.id });
@@ -578,6 +750,10 @@ export function useDesk() {
   }
   async function archive(id: string, restore = false) {
     await request(restore ? 'thread.unarchive' : 'thread.archive', { threadId: id });
+    if (storage) {
+      dirty.current.delete(id);
+      void storage.remove(`thread:${id}`);
+    }
     if (id === threadId) {
       setThreadId('');
       void request('settings.update', { lastThreadId: '' }).catch(fail);
@@ -630,6 +806,7 @@ export function useDesk() {
     threadId,
     thread: cache[threadId],
     pendingSteers: pendingSteers.filter((entry) => entry.threadId === threadId),
+    historyReady: !threadId || historyReady,
     remoteOnline,
     steersSaved,
     dismissSteer: (clientId: string) =>

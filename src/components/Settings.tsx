@@ -18,6 +18,7 @@ import { useT } from '../lib/i18n';
 import { request } from '../lib/useDesk';
 import { FontSizeControl } from './FontSizeControl';
 import { RemoteSettings } from './RemoteSettings';
+import { HistoryStorageSettings } from './HistoryStorageSettings';
 
 export function Settings({
   boot,
@@ -144,6 +145,7 @@ export function Settings({
                 onSave={(fontSize) => onSave({ fontSize })}
                 onError={onError}
               />
+              {remote && <HistoryStorageSettings />}
               <div className="about-card">
                 <img src="./icon.svg" alt="" />
                 <div>

@@ -29,6 +29,11 @@ test('phone pairing enforces authentication, same origin, single-use codes, priv
     const paired = await post('/v1/pair', { code: pair.code, name: 'Phone' });
     assert.equal(paired.status, 200);
     const cookie = paired.headers.get('set-cookie')!.split(';')[0];
+    const identity = (await paired.json()).session;
+    assert.equal(identity.id, f.gateway.status.devices[0].id);
+    const session = await (await fetch(origin + '/v1/session', { headers: { Cookie: cookie } })).json();
+    assert.deepEqual(session, identity);
+    assert.deepEqual(Object.keys(session).sort(), ['expiresAt', 'id', 'name']);
     assert.match(paired.headers.get('set-cookie')!, /HttpOnly; SameSite=Strict/);
     assert.equal((await post('/v1/pair', { code: pair.code, name: 'Another phone' })).status, 401);
     const raw = await readFile(path.join(f.root, 'remote/remote.json'), 'utf8');

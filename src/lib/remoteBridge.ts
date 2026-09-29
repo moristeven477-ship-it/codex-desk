@@ -1,14 +1,18 @@
 import type { NativeBridge, CodexEvent, ImageUpload, ImageAttachment, JsonObject } from '../shared/types';
+import { PhoneHistoryStorage, type PhoneSession } from './historyStorage';
 
 export class RemoteBridge implements NativeBridge {
   readonly remote = true;
+  readonly historyStorage?: PhoneHistoryStorage;
+  private reads = new Map<string, Promise<unknown>>();
   private listeners = new Set<(event: CodexEvent) => void>();
   private socket?: WebSocket;
   private timer?: ReturnType<typeof setTimeout>;
   private online = false;
   private closed = false;
   private retry = 0;
-  constructor() {
+  constructor(session?: PhoneSession) {
+    if (session) this.historyStorage = new PhoneHistoryStorage(session);
     this.connect();
     window.addEventListener('online', this.wake);
     window.addEventListener('offline', this.lost);
@@ -95,7 +99,7 @@ export class RemoteBridge implements NativeBridge {
       );
     }
     if (response.status === 401) {
-      window.dispatchEvent(new Event('desk:pair-required'));
+      if (!this.closed) window.dispatchEvent(new Event('desk:pair-required'));
       throw new Error('请重新配对 / Pair this device again.');
     }
     const result = await response.json();
@@ -103,9 +107,27 @@ export class RemoteBridge implements NativeBridge {
     return result;
   }
   async request<T = unknown>(method: string, params: JsonObject = {}): Promise<T> {
-    const result = await this.post('/v1/rpc', { id: crypto.randomUUID(), method, params });
-    if (!result.ok) throw new Error(result.error);
-    return result.value as T;
+    const coalesce = [
+      'bootstrap',
+      'threads.list',
+      'thread.open',
+      'thread.read',
+      'thread.older',
+      'goal.get',
+    ].includes(method);
+    const key = JSON.stringify([method, params]);
+    const pending = coalesce && this.reads.get(key);
+    if (pending) return pending as Promise<T>;
+    const operation = this.post('/v1/rpc', { id: crypto.randomUUID(), method, params }).then((result) => {
+      if (!result.ok) throw new Error(result.error);
+      return result.value as T;
+    });
+    if (coalesce) this.reads.set(key, operation);
+    try {
+      return await operation;
+    } finally {
+      if (this.reads.get(key) === operation) this.reads.delete(key);
+    }
   }
   async pickDirectory() {
     return window.prompt('电脑上的项目绝对路径 / Absolute project path on the computer', '')?.trim() || null;
