@@ -8,7 +8,16 @@ import { z } from 'zod';
 import { CodexProcess, RpcError } from './codex';
 import { Store, settingsPatchSchema } from './store';
 import { directoryPath, gitDiff, gitStatus, listFiles, previewFile } from './workspace';
-import type { Bootstrap, CodexEvent, JsonObject, Model, Thread, ThreadGoal, Turn } from '../src/shared/types';
+import type {
+  Bootstrap,
+  CodexEvent,
+  Item,
+  JsonObject,
+  Model,
+  Thread,
+  ThreadGoal,
+  Turn,
+} from '../src/shared/types';
 import { CodexTerminal } from './pty';
 import type { TerminalCommand } from './terminal';
 import { APP_VERSION } from '../src/shared/version';
@@ -16,6 +25,7 @@ import { isWriterConflict } from '../src/shared/errors';
 import { permissionOverride, threadPermissions } from '../src/shared/permissions';
 import { storedThreadContext } from './thread-context';
 import { isFastTier } from '../src/shared/speed';
+import { RECENT_ITEMS, RECENT_TURNS } from '../src/shared/history';
 
 const text = z.string().min(1).max(4096);
 const threadArgs = z.object({ threadId: text });
@@ -232,11 +242,68 @@ export class DeskService extends EventEmitter {
         });
     });
   }
-  private async history(threadId: string): Promise<Thread> {
+  private async metadata(threadId: string): Promise<Thread> {
     const { thread } = await this.codex.request<{ thread: Thread }>('thread/read', {
       threadId,
       includeTurns: false,
     });
+    return thread;
+  }
+  private async recentTurns(threadId: string, cursor?: string) {
+    const page = await this.codex.request<{ data: Turn[]; nextCursor: string | null }>('thread/turns/list', {
+      threadId,
+      ...(cursor ? { cursor } : {}),
+      limit: RECENT_TURNS,
+      sortDirection: 'desc',
+      itemsView: 'notLoaded',
+    });
+    const data = await Promise.all(
+      page.data.map(async (turn) => {
+        const items = await this.items(threadId, turn.id);
+        return {
+          ...turn,
+          items: items.data.reverse(),
+          nextItemsCursor: items.nextCursor,
+          itemsView: items.nextCursor ? ('summary' as const) : ('full' as const),
+        };
+      }),
+    );
+    return { data, nextCursor: page.nextCursor };
+  }
+  private async items(threadId: string, turnId: string, cursor?: string) {
+    const page = await this.codex.request<{
+      data: { turnId: string; item: Item }[];
+      nextCursor: string | null;
+    }>('thread/items/list', {
+      threadId,
+      turnId,
+      ...(cursor ? { cursor } : {}),
+      limit: RECENT_ITEMS,
+      sortDirection: 'desc',
+    });
+    return { data: page.data.map((entry) => entry.item), nextCursor: page.nextCursor };
+  }
+  private async history(threadId: string, recent = false): Promise<Thread> {
+    if (recent && !this.pristine.has(threadId)) {
+      try {
+        // Read recent items before attaching/resuming a CLI writer. Neither old
+        // turns nor a long-running turn's entire tool log is needed to show its tail.
+        const [thread, page] = await Promise.all([this.metadata(threadId), this.recentTurns(threadId)]);
+        const active =
+          thread.status.type === 'active' && page.data.find((turn) => turn.status === 'inProgress');
+        if (active) this.activeTurns.set(threadId, active.id);
+        return {
+          ...thread,
+          turns: page.data.reverse(),
+          nextTurnsCursor: page.nextCursor,
+          historyPaging: 'items',
+        };
+      } catch (err) {
+        if (!(err instanceof RpcError) || ![-32601, -32600, -32602].includes(err.code)) throw err;
+        // CLI versions without item pagination retain the existing full-page path.
+      }
+    }
+    const thread = await this.metadata(threadId);
     if (this.pristine.has(threadId)) return { ...thread, turns: [] };
     try {
       const page = await this.codex.request<{ data: Turn[]; nextCursor: string | null }>(
@@ -338,16 +405,25 @@ export class DeskService extends EventEmitter {
           archived: args.archived ?? false,
         });
       }
-      case 'thread.read':
-        return this.history(threadArgs.parse(params).threadId);
+      case 'thread.read': {
+        const args = threadArgs.extend({ recent: z.boolean().default(false) }).parse(params);
+        return this.history(args.threadId, args.recent);
+      }
       case 'thread.open': {
-        const args = z.object({ threadId: text, archived: z.boolean().default(false) }).parse(params);
-        if (args.archived) return this.history(args.threadId);
+        const args = z
+          .object({
+            threadId: text,
+            archived: z.boolean().default(false),
+            metadataOnly: z.boolean().default(false),
+          })
+          .parse(params);
+        const read = () => (args.metadataOnly ? this.metadata(args.threadId) : this.history(args.threadId));
+        if (args.archived) return read();
         try {
           await this.resume(args.threadId);
         } catch (error) {
           if (!isWriterConflict(error)) throw error;
-          const thread = await this.history(args.threadId);
+          const thread = await read();
           const context = await storedThreadContext(
             this.codex.connection.codexHome ||
               this.store.state.settings.codexHome ||
@@ -357,7 +433,7 @@ export class DeskService extends EventEmitter {
           return { ...thread, ...context.display, syncState: 'external' } satisfies Thread;
         }
         const thread = {
-          ...(await this.history(args.threadId)),
+          ...(await read()),
           ...this.runtime.get(args.threadId),
           syncState: 'live' as const,
         };
@@ -450,13 +526,20 @@ export class DeskService extends EventEmitter {
         return this.codex.request('thread/compact/start', args);
       }
       case 'thread.older': {
-        const args = z.object({ threadId: text, cursor: text }).parse(params);
+        const { recent, ...args } = z
+          .object({ threadId: text, cursor: text, recent: z.boolean().default(false) })
+          .parse(params);
+        if (recent) return this.recentTurns(args.threadId, args.cursor);
         return this.codex.request('thread/turns/list', {
           ...args,
           limit: 30,
           sortDirection: 'desc',
           itemsView: 'full',
         });
+      }
+      case 'thread.items': {
+        const args = z.object({ threadId: text, turnId: text, cursor: text }).parse(params);
+        return this.items(args.threadId, args.turnId, args.cursor);
       }
       case 'thread.create': {
         const args = z

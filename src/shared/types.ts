@@ -80,6 +80,7 @@ export interface Turn {
   id: string;
   items: Item[];
   itemsView?: 'notLoaded' | 'summary' | 'full';
+  nextItemsCursor?: string | null;
   status: 'inProgress' | 'completed' | 'interrupted' | 'failed';
   error?: { message: string } | null;
 }
@@ -100,6 +101,7 @@ export interface Thread {
   turns: Turn[];
   historyMode?: string;
   nextTurnsCursor?: string | null;
+  historyPaging?: 'items';
   syncState?: 'live' | 'external';
   permissionMode?: PermissionMode;
   approvalPolicy?: ApprovalPolicy;

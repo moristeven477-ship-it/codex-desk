@@ -184,12 +184,31 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       thread.metadataReady = true;
       reply({ thread });
       break;
-    case 'thread/turns/list':
+    case 'thread/turns/list': {
+      const turns = [...thread.turns];
+      if (p.sortDirection !== 'asc') turns.reverse();
+      const start = p.cursor ? turns.findIndex((turn) => turn.id === p.cursor) + 1 : 0;
+      const page = turns.slice(start, start + (p.limit || 30));
       reply({
-        data: [...thread.turns].reverse().map((turn) => ({ ...turn, itemsView: 'full' })),
-        nextCursor: null,
+        data: page.map((turn) => ({
+          ...turn,
+          items: p.itemsView === 'notLoaded' ? [] : turn.items,
+          itemsView: p.itemsView || 'full',
+        })),
+        nextCursor: start + page.length < turns.length ? page.at(-1).id : null,
       });
       break;
+    }
+    case 'thread/items/list': {
+      const items = thread.turns
+        .filter((turn) => !p.turnId || turn.id === p.turnId)
+        .flatMap((turn) => turn.items.map((item) => ({ turnId: turn.id, item })));
+      if (p.sortDirection === 'desc') items.reverse();
+      const start = p.cursor ? items.findIndex((entry) => entry.item.id === p.cursor) + 1 : 0;
+      const page = items.slice(start, start + (p.limit || 20));
+      reply({ data: page, nextCursor: start + page.length < items.length ? page.at(-1).item.id : null });
+      break;
+    }
     case 'thread/resume':
       if (thread.materialized === false)
         write({
@@ -477,6 +496,11 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       break;
     case 'test.settings':
       reply(currentSettings(thread));
+      break;
+    case 'test.history':
+      thread.turns = p.turns;
+      thread.status = p.status || { type: 'idle' };
+      reply({});
       break;
     case 'test.settingsDelay':
       settingsDelay = p.milliseconds;

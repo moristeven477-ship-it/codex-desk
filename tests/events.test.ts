@@ -71,7 +71,9 @@ test('summary completion preserves user messages, steers and tools without dupli
   const answer = { id: 'answer', type: 'agentMessage', text: 'Finished' };
   const before: Thread = {
     ...empty(),
-    turns: [{ id: 't', status: 'inProgress', items: [user, tool, steer, answer] }],
+    turns: [
+      { id: 't', status: 'inProgress', items: [user, tool, steer, answer], nextItemsCursor: 'older-items' },
+    ],
   };
   const event: CodexEvent = {
     kind: 'notification',
@@ -81,6 +83,7 @@ test('summary completion preserves user messages, steers and tools without dupli
   const after = reduceThread(before, event);
   assert.deepEqual(after.turns[0].items, [user, tool, steer, answer]);
   assert.equal(after.turns[0].status, 'completed');
+  assert.equal(after.turns[0].nextItemsCursor, 'older-items');
   assert.deepEqual(reduceThread(after, event).turns[0].items, after.turns[0].items);
   assert.equal(before.turns[0].status, 'inProgress');
   // An explicitly full snapshot remains authoritative (e.g. history after rollback).
@@ -92,6 +95,7 @@ test('summary completion preserves user messages, steers and tools without dupli
     },
   });
   assert.deepEqual(full.turns[0].items, [user, answer]);
+  assert.equal(full.turns[0].nextItemsCursor, undefined);
 });
 
 test('compaction lifecycle uses notifications and terminal turn errors without inventing success', () => {

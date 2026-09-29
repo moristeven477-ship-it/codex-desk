@@ -1,6 +1,7 @@
 import type { HistoryStorage } from '../shared/history';
 
-export const HISTORY_LIMIT = 50 * 1024 * 1024;
+export const HISTORY_LIMIT = 300 * 1024 * 1024;
+const SNAPSHOT_LIMIT = 25 * 1024 * 1024;
 const SESSION_KEY = 'codex-desk:phone-session';
 export interface PhoneSession {
   id: string;
@@ -162,7 +163,7 @@ export class PhoneHistoryStorage implements HistoryStorage {
       try {
         const json = JSON.stringify(value);
         const bytes = new Blob([json]).size;
-        if (bytes > HISTORY_LIMIT / 2) return; // A single huge transcript must not evict the whole library.
+        if (bytes > SNAPSHOT_LIMIT) return; // Bound individual JSON parsing work on the phone.
         const db = await this.db();
         if (generation !== this.generation || this.invalidated) return;
         const transaction = db.transaction(['data', 'meta'], 'readwrite');

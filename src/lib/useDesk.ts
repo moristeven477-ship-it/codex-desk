@@ -6,6 +6,7 @@ import type {
   CodexEvent,
   CollaborationMode,
   JsonObject,
+  Item,
   Project,
   Settings,
   Thread,
@@ -194,10 +195,51 @@ export function useDesk() {
         });
       }
       try {
-        const thread = await request<Thread>('thread.open', {
-          threadId: id,
-          archived: current.current.archived,
-        });
+        const args = { threadId: id, archived: current.current.archived };
+        let thread: Thread;
+        if (remote) {
+          // The transcript is a separate read: show its newest page without
+          // waiting for CLI resume, while keeping sending gated on live state.
+          const recent = request<Thread>('thread.read', { threadId: id, recent: true }).then((preview) => {
+            received = true;
+            if (generation === selectionGeneration.current) {
+              const hydrated = buffered.reduce(reduceThread, preview);
+              setCache((old) => ({
+                ...old,
+                [id]: { ...mergeHistory(old[id], hydrated), goal: old[id]?.goal },
+              }));
+              if (!background) {
+                setLoading(false);
+                setNewConversation(!hydrated.turns.length);
+              }
+            }
+            return preview;
+          });
+          const [, attached] = await Promise.all([
+            recent,
+            request<Thread>('thread.open', { ...args, metadataOnly: true }),
+          ]);
+          // Catch changes made by another CLI between the preview and attaching
+          // the event subscription. Keep the already shown messages on screen.
+          if (generation !== selectionGeneration.current) return;
+          // History is about to be re-read, but its metadata does not include
+          // live permissions/goals. Keep those newer control events instead of
+          // letting the delayed attachment response restore older CLI settings.
+          const controls = buffered.filter(
+            (event) => event.method === 'thread/settings/updated' || event.method?.startsWith('thread/goal/'),
+          );
+          buffered.splice(0, buffered.length, ...controls);
+          const fresh = await request<Thread>('thread.read', { threadId: id, recent: true });
+          thread = {
+            ...fresh,
+            ...attached,
+            turns: fresh.turns,
+            status: fresh.status,
+            updatedAt: fresh.updatedAt,
+            name: fresh.name,
+            nextTurnsCursor: fresh.nextTurnsCursor,
+          };
+        } else thread = await request<Thread>('thread.open', args);
         received = true;
         const hydrated = buffered.reduce(reduceThread, thread);
         if (generation !== selectionGeneration.current) return;
@@ -778,22 +820,67 @@ export function useDesk() {
   async function older() {
     const thread = cache[threadId];
     if (!thread?.nextTurnsCursor) return;
+    const cursor = thread.nextTurnsCursor;
     const page = await request<{ data: Turn[]; nextCursor: string | null }>('thread.older', {
       threadId,
-      cursor: thread.nextTurnsCursor,
+      cursor,
+      ...(thread.historyPaging === 'items' ? { recent: true } : {}),
     });
     updateSteers((entries) => reconcileSteerHistory(entries, { ...thread, turns: page.data }));
-    setCache((old) => ({
-      ...old,
-      [threadId]: {
-        ...old[threadId],
-        turns: [
-          ...page.data.reverse().filter((t) => !old[threadId].turns.some((o) => o.id === t.id)),
-          ...old[threadId].turns,
-        ],
-        nextTurnsCursor: page.nextCursor,
-      },
-    }));
+    setCache((old) =>
+      old[threadId]?.nextTurnsCursor !== cursor
+        ? old
+        : {
+            ...old,
+            [threadId]: {
+              ...old[threadId],
+              turns: [
+                ...page.data.reverse().filter((t) => !old[threadId].turns.some((o) => o.id === t.id)),
+                ...old[threadId].turns,
+              ],
+              nextTurnsCursor: page.nextCursor,
+            },
+          },
+    );
+  }
+  async function olderItems(turnId: string) {
+    const id = threadId;
+    const turn = cacheRef.current[id]?.turns.find((entry) => entry.id === turnId);
+    if (!turn?.nextItemsCursor) return;
+    const cursor = turn.nextItemsCursor;
+    const page = await request<{ data: Item[]; nextCursor: string | null }>('thread.items', {
+      threadId: id,
+      turnId,
+      cursor,
+    });
+    setCache((old) => {
+      const thread = old[id];
+      if (!thread) return old;
+      return {
+        ...old,
+        [id]: {
+          ...thread,
+          turns: thread.turns.map((current) => {
+            if (current.id !== turnId || current.nextItemsCursor !== cursor) return current;
+            const ids = new Set(current.items.map((item) => item.id));
+            return {
+              ...current,
+              items: [
+                ...page.data
+                  .slice()
+                  .reverse()
+                  .filter((item) => !ids.has(item.id)),
+                ...current.items,
+              ],
+              nextItemsCursor: page.nextCursor,
+              itemsView: page.nextCursor ? ('summary' as const) : ('full' as const),
+            };
+          }),
+        },
+      };
+    });
+    const thread = cacheRef.current[id];
+    if (thread) updateSteers((entries) => reconcileSteerHistory(entries, thread));
   }
   return {
     newConversation: newConversation && !cache[threadId]?.turns.length,
@@ -832,6 +919,7 @@ export function useDesk() {
     setArchived,
     refresh,
     openThread,
+    olderItems,
     selectProject,
     addProject,
     removeProject,

@@ -51,6 +51,7 @@ export function reduceThread(thread: Thread, event: CodexEvent): Thread {
         ...turns[existing],
         ...turn,
         items: turnItems(turns[existing].items, turn),
+        ...(turn.itemsView === 'full' ? { nextItemsCursor: undefined } : {}),
       };
     const updated = turns[existing < 0 ? turns.length - 1 : existing];
     if (event.method === 'turn/completed') {

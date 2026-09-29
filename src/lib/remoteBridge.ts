@@ -123,6 +123,7 @@ export class RemoteBridge implements NativeBridge {
       'thread.open',
       'thread.read',
       'thread.older',
+      'thread.items',
       'goal.get',
     ].includes(method);
     const key = JSON.stringify([method, params]);

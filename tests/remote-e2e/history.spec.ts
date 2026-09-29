@@ -79,7 +79,7 @@ test('persistent phone history appears before session, bootstrap and history req
   await page.route('**/v1/rpc', async (route) => {
     const { method } = route.request().postDataJSON();
     requests.push(method);
-    if (['bootstrap', 'thread.open', 'threads.list'].includes(method)) await network.promise;
+    if (['bootstrap', 'thread.open', 'thread.read', 'threads.list'].includes(method)) await network.promise;
     if (method === 'goal.get') await goal.promise;
     await route.continue();
   });
@@ -238,7 +238,7 @@ test('storage limits evict least-recently-used histories and malformed snapshots
     const limited = await store.stats();
     const recent = !!(await store.read('thread:cache-0'));
     const evicted = await store.read('thread:cache-1');
-    for (let i = 0; i < 3; i++)
+    for (let i = 0; i < 17; i++)
       await store.write(`thread:large-${i}`, thread(`large-${i}`, 'x'.repeat(18 * 1024 * 1024)));
     const bounded = await store.stats();
     const oldestLarge = await store.read('thread:large-0');
@@ -260,6 +260,8 @@ test('storage limits evict least-recently-used histories and malformed snapshots
   expect(counts.recent).toBe(true);
   expect(counts.evicted).toBe(true);
   expect(counts.bytes).toBeLessThanOrEqual(counts.limit);
+  expect(counts.limit).toBe(300 * 1024 * 1024);
+  expect(counts.bytes).toBeGreaterThan(280 * 1024 * 1024);
   expect(counts.oldestLarge).toBe(true);
   expect(counts.broken).toBe(true);
   expect(counts.bootstrapRetained).toBe(true);
@@ -384,5 +386,158 @@ test('the initial unauthenticated session check cannot erase a pairing code ente
     await expect(page.getByRole('heading', { name: 'What’s on your mind?' })).toBeVisible();
   } finally {
     session.release();
+  }
+});
+
+test('a long uncached conversation shows its newest messages before CLI attach and pages older content on demand', async ({
+  page,
+}) => {
+  const turns = Array.from({ length: 40 }, (_, index) => ({
+    id: `long-${index}`,
+    status: 'completed',
+    items: [
+      {
+        id: `user-${index}`,
+        type: 'userMessage',
+        content: [{ type: 'text', text: `Earlier request ${index}` }],
+      },
+      ...Array.from({ length: 44 }, (_, item) => ({
+        id: `tool-${index}-${item}`,
+        type: 'commandExecution',
+        command: `Inspect file ${index}-${item}`,
+        status: 'completed',
+        aggregatedOutput: 'Synthetic output. '.repeat(480),
+        exitCode: 0,
+      })),
+      { id: `answer-${index}`, type: 'agentMessage', text: `Latest answer ${index}` },
+    ],
+  }));
+  await f.shared.request('test.history', { threadId: 'fixture-history', turns });
+  await pair(page);
+  const attach = gate(),
+    cachedNetwork = gate();
+  let attachmentCaptured = false;
+  const calls: { method: string; params: Record<string, unknown> }[] = [];
+  await page.route('**/v1/rpc', async (route) => {
+    const call = route.request().postDataJSON();
+    calls.push(call);
+    if (call.method === 'thread.open' && call.params.threadId === 'fixture-history') {
+      const response = await route.fetch();
+      attachmentCaptured = true;
+      await attach.promise;
+      await route.fulfill({ response });
+      return;
+    }
+    await route.continue();
+  });
+  try {
+    const start = Date.now();
+    await selectHistory(page);
+    await expect(page.locator('.assistant-message').filter({ hasText: 'Latest answer 39' })).toBeVisible({
+      timeout: 3000,
+    });
+    console.log(`Newest uncached messages visible in ${Date.now() - start} ms while CLI attach is held.`);
+    await expect(page.locator('.turn')).toHaveCount(2);
+    await expect(page.locator('.activity')).toHaveCount(38);
+    await expect(page.locator('.chat-loading')).toHaveCount(0);
+    await expect(page.locator('.history-sync-status')).toBeVisible();
+    await page.getByRole('textbox', { name: 'Message Codex' }).fill('Wait for live permissions.');
+    await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
+    expect(
+      calls.filter((call) => call.method === 'thread.read').every((call) => call.params.recent === true),
+    ).toBe(true);
+    expect(calls.some((call) => call.method === 'thread.open' && call.params.metadataOnly === true)).toBe(
+      true,
+    );
+    const latest = page.locator('.turn').last();
+    const more = latest.getByRole('button', {
+      name: 'Load earlier messages and tools in this turn',
+      exact: true,
+    });
+    await more.click();
+    await expect(latest.locator('.activity')).toHaveCount(39);
+    await more.click();
+    await expect(latest.locator('.user-text')).toHaveText('Earlier request 39');
+    await expect(latest.locator('.activity')).toHaveCount(44);
+    await expect(more).toHaveCount(0);
+    await page.getByRole('button', { name: 'Load earlier messages', exact: true }).click();
+    await expect(page.locator('.turn')).toHaveCount(4);
+    await expect(page.locator('.assistant-message')).toHaveCount(4);
+    // A write made before Desk attaches emits no event to the new subscriber.
+    // The authoritative read after attachment must still discover it.
+    turns.at(-1)!.items.push({
+      id: 'between-attach',
+      type: 'agentMessage',
+      text: 'Arrived while CLI was reconnecting.',
+    });
+    await f.shared.request('test.history', { threadId: 'fixture-history', turns });
+    await expect.poll(() => attachmentCaptured).toBe(true);
+    await f.shared.request('thread/settings/update', {
+      threadId: 'fixture-history',
+      sandboxPolicy: { type: 'dangerFullAccess' },
+      approvalPolicy: 'never',
+      approvalsReviewer: 'user',
+    });
+    await expect(page.locator('.mobile-permission-trigger')).toContainText('YOLO');
+    attach.release();
+    await expect(
+      page.locator('.assistant-message').filter({ hasText: 'Arrived while CLI was reconnecting.' }),
+    ).toBeVisible();
+    await expect(page.locator('.history-sync-status')).toHaveCount(0);
+    await expect(page.locator('.mobile-permission-trigger')).toContainText('YOLO');
+    await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+    await expect(page.locator('.user-text')).toHaveText('Earlier request 39');
+    await expect(page.locator('.turn')).toHaveCount(4);
+    await saved(page, 'fixture-history');
+    await settings(page);
+    await expect(page.locator('.history-storage-setting')).toContainText('/ 300 MB');
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    // Simulate a large transcript saved by 0.6.0. Only its tail should render
+    // on startup; older cached items remain reachable with all reads held.
+    const legacy = (await f.service.handle('thread.read', { threadId: 'fixture-history' })) as Thread;
+    expect(legacy.turns).toHaveLength(30);
+    const recent = (await f.service.handle('thread.read', {
+      threadId: 'fixture-history',
+      recent: true,
+    })) as Thread;
+    const fullBytes = Buffer.byteLength(JSON.stringify(legacy));
+    const recentBytes = Buffer.byteLength(JSON.stringify(recent));
+    expect(recentBytes).toBeLessThan(fullBytes / 20);
+    console.log(`Recent page ${recentBytes} bytes; previous 30-turn page ${fullBytes} bytes.`);
+    await page.route('**/v1/rpc', async (route) => {
+      if (
+        ['bootstrap', 'thread.read', 'thread.open', 'threads.list'].includes(
+          route.request().postDataJSON().method,
+        )
+      )
+        await cachedNetwork.promise;
+      await route.continue().catch(() => {});
+    });
+    await page.evaluate(async (snapshot) => {
+      window.dispatchEvent(new Event('desk:history-cleared'));
+      await window.codexDesk!.historyStorage!.write(`thread:${snapshot.id}`, snapshot);
+    }, legacy);
+    await page.reload();
+    await expect(
+      page.locator('.assistant-message').filter({ hasText: 'Arrived while CLI was reconnecting.' }),
+    ).toBeVisible();
+    await expect(page.locator('.turn')).toHaveCount(2);
+    expect(await page.locator('.activity').count()).toBeLessThanOrEqual(38);
+    await page.getByRole('button', { name: 'Load earlier messages', exact: true }).click();
+    await expect(page.locator('.turn')).toHaveCount(4);
+    const cachedLatest = page.locator('.turn').last();
+    const cachedMore = cachedLatest.getByRole('button', {
+      name: 'Load earlier messages and tools in this turn',
+      exact: true,
+    });
+    await cachedMore.click();
+    await expect(cachedLatest.locator('.activity')).toHaveCount(38);
+    await cachedMore.click();
+    await expect(cachedLatest.locator('.user-text')).toHaveText('Earlier request 39');
+    await expect(cachedMore).toHaveCount(0);
+    await page.screenshot({ path: 'test-results/remote/recent-history.png', animations: 'disabled' });
+  } finally {
+    attach.release();
+    cachedNetwork.release();
   }
 });

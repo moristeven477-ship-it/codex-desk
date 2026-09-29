@@ -736,6 +736,7 @@ function Workspace({ desk }: { desk: ReturnType<typeof useDesk> }) {
               running={running}
               revealMessage={desk.revealMessage}
               onOlder={desk.older}
+              onOlderItems={desk.olderItems}
               onError={desk.fail}
               onCompact={() => runCommand('compact', '')}
               onNew={desk.newThread}

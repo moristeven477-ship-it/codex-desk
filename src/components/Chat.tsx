@@ -19,6 +19,7 @@ import type { Item, Thread } from '../shared/types';
 import { useT } from '../lib/i18n';
 import { compactionFailure } from '../shared/errors';
 import { CompactionError } from './CompactionError';
+import { RECENT_ITEMS, RECENT_TURNS } from '../shared/history';
 
 export function Markdown({ text }: { text: string }) {
   return (
@@ -213,6 +214,7 @@ export function Chat({
   running,
   revealMessage,
   onOlder,
+  onOlderItems,
   onError,
   onCompact,
   onNew,
@@ -224,6 +226,7 @@ export function Chat({
   running: boolean;
   revealMessage: number;
   onOlder: () => Promise<void>;
+  onOlderItems: (turnId: string) => Promise<void>;
   onError: (e: unknown) => void;
   onCompact: () => Promise<boolean>;
   onNew: () => void;
@@ -233,8 +236,41 @@ export function Chat({
     scrollRef = useRef<HTMLDivElement>(null),
     contentRef = useRef<HTMLDivElement>(null),
     pinned = useRef(true);
+  const remote = !!window.codexDesk?.remote;
+  const [turnLimit, setTurnLimit] = useState(RECENT_TURNS);
+  const [itemLimits, setItemLimits] = useState<Record<string, number>>({});
+  const previous = useRef(thread);
+  const shownTurns = remote ? thread?.turns.slice(-turnLimit) : thread?.turns;
+  const hiddenTurns = remote && (thread?.turns.length ?? 0) > turnLimit;
   const [atBottom, setAtBottom] = useState(true),
-    [olderLoading, setOlderLoading] = useState(false);
+    [olderLoading, setOlderLoading] = useState(false),
+    [itemsLoading, setItemsLoading] = useState('');
+  useLayoutEffect(() => {
+    setTurnLimit(RECENT_TURNS);
+    setItemLimits({});
+  }, [thread?.id]);
+  useLayoutEffect(() => {
+    const old = previous.current;
+    previous.current = thread;
+    if (!remote || !thread || old?.id !== thread.id || pinned.current) return;
+    // While reading earlier messages, new live items must not move the start
+    // of the visible window. Older pages are expanded explicitly below.
+    const lastTurn = thread.turns.findIndex((turn) => turn.id === old.turns.at(-1)?.id);
+    if (lastTurn >= 0 && lastTurn < thread.turns.length - 1)
+      setTurnLimit((limit) => limit + thread.turns.length - lastTurn - 1);
+    const added: Record<string, number> = {};
+    for (const turn of thread.turns) {
+      const last = old.turns.find((entry) => entry.id === turn.id)?.items.at(-1)?.id;
+      const index = turn.items.findIndex((item) => item.id === last);
+      if (index >= 0 && index < turn.items.length - 1) added[turn.id] = turn.items.length - index - 1;
+    }
+    if (Object.keys(added).length)
+      setItemLimits((limits) => {
+        const next = { ...limits };
+        for (const [id, count] of Object.entries(added)) next[id] = (limits[id] ?? RECENT_ITEMS) + count;
+        return next;
+      });
+  }, [thread, remote]);
   useLayoutEffect(() => {
     pinned.current = true;
     setAtBottom(true);
@@ -244,7 +280,7 @@ export function Chat({
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
       setAtBottom(true);
     }
-  }, [thread, loading, revealMessage]);
+  }, [thread, loading, revealMessage, turnLimit, itemLimits]);
   useEffect(() => {
     const element = scrollRef.current,
       content = contentRef.current;
@@ -259,13 +295,25 @@ export function Chat({
     observer.observe(content);
     return () => observer.disconnect();
   }, []);
-  async function older() {
+  async function older(turnId?: string) {
+    const selected = thread?.id;
     const element = scrollRef.current,
       height = element?.scrollHeight ?? 0;
     pinned.current = false;
-    setOlderLoading(true);
+    if (turnId) setItemsLoading(turnId);
+    else setOlderLoading(true);
     try {
-      await onOlder();
+      if (turnId) {
+        const turn = thread?.turns.find((entry) => entry.id === turnId);
+        if (!remote || (turn?.items.length ?? 0) <= (itemLimits[turnId] ?? RECENT_ITEMS))
+          await onOlderItems(turnId);
+        if (previous.current?.id !== selected) return;
+        setItemLimits((old) => ({ ...old, [turnId]: (old[turnId] ?? RECENT_ITEMS) + RECENT_ITEMS }));
+      } else {
+        if (!hiddenTurns) await onOlder();
+        if (previous.current?.id !== selected) return;
+        setTurnLimit((old) => old + RECENT_TURNS);
+      }
       requestAnimationFrame(() => {
         if (element) element.scrollTop += element.scrollHeight - height;
       });
@@ -273,6 +321,7 @@ export function Chat({
       onError(e);
     } finally {
       setOlderLoading(false);
+      setItemsLoading('');
     }
   }
   return (
@@ -288,7 +337,7 @@ export function Chat({
         }}
       >
         <div className="chat-content" ref={contentRef}>
-          {thread?.nextTurnsCursor && (
+          {(thread?.nextTurnsCursor || hiddenTurns) && (
             <button className="load-older" onClick={() => void older()} disabled={olderLoading}>
               {olderLoading && <Loader2 size={14} className="spin" />}
               {t('加载更早的消息', 'Load earlier messages')}
@@ -297,7 +346,7 @@ export function Chat({
           {syncing && thread && (
             <div className="history-sync-status" role="status">
               <Loader2 size={13} className="spin" />
-              {t('已显示本地记录，正在同步…', 'Saved conversation shown · Syncing…')}
+              {t('已显示消息，正在同步 CLI…', 'Messages shown · Syncing with CLI…')}
             </div>
           )}
           {loading && !thread ? (
@@ -306,7 +355,9 @@ export function Chat({
               <span>{t('读取会话…', 'Loading conversation…')}</span>
             </div>
           ) : (
-            thread?.turns.map((turn, index) => {
+            shownTurns?.map((turn) => {
+              const itemLimit = itemLimits[turn.id] ?? RECENT_ITEMS;
+              const hiddenItems = remote && turn.items.length > itemLimit;
               const message = turn.error?.message || t('任务执行失败', 'This turn failed.');
               const failure = compactionFailure(
                 message,
@@ -315,7 +366,17 @@ export function Chat({
               );
               return (
                 <section key={turn.id} className="turn">
-                  {turn.items.map((item) => (
+                  {(turn.nextItemsCursor || hiddenItems) && (
+                    <button
+                      className="load-older"
+                      onClick={() => void older(turn.id)}
+                      disabled={!!itemsLoading || olderLoading}
+                    >
+                      {itemsLoading === turn.id && <Loader2 size={14} className="spin" />}
+                      {t('加载本轮更早的消息与工具记录', 'Load earlier messages and tools in this turn')}
+                    </button>
+                  )}
+                  {(remote ? turn.items.slice(-itemLimit) : turn.items).map((item) => (
                     <MessageItem
                       key={item.id}
                       item={
@@ -331,7 +392,7 @@ export function Chat({
                       <CompactionError
                         message={message}
                         filtered={failure === 'filtered'}
-                        onRetry={canCompact && index === thread.turns.length - 1 ? onCompact : undefined}
+                        onRetry={canCompact && turn.id === thread?.turns.at(-1)?.id ? onCompact : undefined}
                         onNew={onNew}
                         onError={onError}
                       />

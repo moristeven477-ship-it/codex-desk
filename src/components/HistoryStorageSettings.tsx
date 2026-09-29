@@ -53,8 +53,8 @@ export function HistoryStorageSettings() {
             )
           : stats
             ? t(
-                `${stats.conversations} 个会话 · ${(stats.bytes / 1024 / 1024).toFixed(1)} / 50 MB`,
-                `${stats.conversations} conversations · ${(stats.bytes / 1024 / 1024).toFixed(1)} / 50 MB`,
+                `${stats.conversations} 个会话 · ${(stats.bytes / 1024 / 1024).toFixed(1)} / ${Math.round(stats.limit / 1024 / 1024)} MB`,
+                `${stats.conversations} conversations · ${(stats.bytes / 1024 / 1024).toFixed(1)} / ${Math.round(stats.limit / 1024 / 1024)} MB`,
               )
             : t('正在读取缓存信息…', 'Reading storage usage…')}
       </p>

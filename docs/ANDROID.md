@@ -22,11 +22,13 @@ Tailscale identifies each device independently of its Wi-Fi/cellular address. Ch
 
 ### Using the phone
 
-Version 0.6.0 saves opened conversations and filtered history lists on the phone. Switching conversations or reopening the connected page shows local messages before network reads complete, then replaces them with authoritative CLI history. The sync label remains until the current history is confirmed; cached permissions do not authorize sends. A slow Goal request no longer blocks the messages. Reconnects coalesce duplicate reads, and phone list polling is reduced to every 15 seconds while live events still refresh the list immediately.
+Version 0.6.1 loads the newest two turns first (up to 20 items each), independently of CLI attachment. Earlier turns and the earlier messages/tools within a long turn load on demand through separate buttons. Large existing caches render only their tail at first; cached older entries expand locally. After attachment, a second bounded read reconciles anything the CLI wrote in between before enabling sends.
 
-Use **⋯ → Settings → Phone history cache** to see usage or clear it. It retains up to 80 conversations and 50 MiB per pairing, excluding unusually large individual snapshots over 25 MiB. Eviction only removes phone copies. Storage failure falls back to live reads. Signing out or receiving an expired/revoked-pairing response clears that pairing's cache. The cache contains no auth token and never queues or replays messages. Loading the app shell still needs the computer; there is no service worker or complete offline launcher.
+Desk saves opened conversations and filtered history lists on the phone. Switching conversations or reopening the connected page shows local messages before network reads complete, then replaces them with authoritative CLI history. The sync label remains until the current history is confirmed; cached permissions do not authorize sends. A slow Goal request no longer blocks the messages. Reconnects coalesce duplicate reads, and phone list polling is reduced to every 15 seconds while live events still refresh the list immediately.
 
-With desktop and Android **0.6.0**, the mobile shell has one header and a composer starting at one line. It expands for longer drafts and scrolls when the keyboard leaves limited space. Normal Enter inserts a newline; tap Send or press Ctrl/Command+Enter to submit. Slash-command Enter still runs the command.
+Use **⋯ → Settings → Phone history cache** to see usage or clear it. It retains up to 80 conversations and 300 MiB per pairing, excluding unusually large individual snapshots over 25 MiB. Eviction only removes phone copies. Storage failure falls back to live reads. Signing out or receiving an expired/revoked-pairing response clears that pairing's cache. The cache contains no auth token and never queues or replays messages. Loading the app shell still needs the computer; there is no service worker or complete offline launcher.
+
+With desktop and Android **0.6.1**, the mobile shell has one header and a composer starting at one line. It expands for longer drafts and scrolls when the keyboard leaves limited space. Normal Enter inserts a newline; tap Send or press Ctrl/Command+Enter to submit. Slash-command Enter still runs the command.
 
 - **+** opens image attachment, the complete slash menu and Plan mode.
 - **Model name** opens Model / Thinking / Access tabs and Fast; the adjacent permission label opens Access directly. Opening a sheet changes no CLI settings.
@@ -111,11 +113,13 @@ Install `app/build/outputs/apk/debug/app-debug.apk` for development. `assembleRe
 
 ### 手机操作
 
-0.6.0 会把已打开的会话和历史列表保存在手机。切换会话或重新打开已连接的页面时，先显示本地消息，再与 CLI 最新历史校准；确认当前会话前会标明同步状态，缓存权限不会用于授权发送。Goal 读取不再阻塞消息。重复请求会合并，手机列表轮询降为 15 秒一次，实时事件仍立即刷新。
+0.6.1 优先读取最近 2 轮、每轮最近 20 条记录，不等待 CLI 恢复连接。更早轮次、长任务内部的早期消息与工具记录分别点击按钮分批加载。旧版大缓存也只先绘制末尾消息，已有的旧记录直接从本地展开。连接完成后再次读取最新一页，补齐连接期间的 CLI 消息，再允许发送。
 
-在 **⋯ → 设置 → 手机本地缓存** 查看占用或清除。每次配对最多保留 80 个会话、50 MiB；超过 25 MiB 的单个快照跳过缓存。自动淘汰只删除手机副本，存储不可用时仍可在线读取。退出配对、或收到配对失效/撤销的响应后会清除该配对缓存。缓存不保存认证令牌，也不会排队重发消息。App 页面本身仍需从电脑加载，本次没有完全离线启动功能。
+Desk 会把已打开的会话和历史列表保存在手机。切换会话或重新打开已连接的页面时，先显示本地消息，再与 CLI 最新历史校准；确认当前会话前会标明同步状态，缓存权限不会用于授权发送。Goal 读取不再阻塞消息。重复请求会合并，手机列表轮询降为 15 秒一次，实时事件仍立即刷新。
 
-电脑端和 APK 更新至 **0.6.0** 后，页面只保留一层页头。输入框从一行开始，随文字增长；长草稿在框内滚动。手机 Enter 换行，点击发送或 Ctrl/Command+Enter 提交；`/` 命令仍可 Enter 执行。
+在 **⋯ → 设置 → 手机本地缓存** 查看占用或清除。每次配对最多保留 80 个会话、300 MiB；超过 25 MiB 的单个快照跳过缓存。自动淘汰只删除手机副本，存储不可用时仍可在线读取。退出配对、或收到配对失效/撤销的响应后会清除该配对缓存。缓存不保存认证令牌，也不会排队重发消息。App 页面本身仍需从电脑加载，本次没有完全离线启动功能。
+
+电脑端和 APK 更新至 **0.6.1** 后，页面只保留一层页头。输入框从一行开始，随文字增长；长草稿在框内滚动。手机 Enter 换行，点击发送或 Ctrl/Command+Enter 提交；`/` 命令仍可 Enter 执行。
 
 - **＋** 打开图片、完整 `/` 命令和计划模式。
 - **模型名称** 打开模型 / 思考 / 权限与 Fast；旁边的权限文字直接打开权限页。仅查看面板不会改写 CLI 设置。

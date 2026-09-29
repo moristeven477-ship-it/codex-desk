@@ -293,6 +293,43 @@ try {
     initialSettings.serviceTier,
     'per-thread toggles must not change the CLI default',
   );
+  const recent = (await desk.handle('thread.read', { threadId: thread.id, recent: true })) as Thread;
+  assert.equal(
+    recent.historyPaging,
+    'items',
+    'real CLI supports recent item pagination without full-history fallback',
+  );
+  assert.equal(recent.turns.length, 2);
+  assert.equal(recent.turns.at(-1)?.id, fastTurn.id);
+  assert.ok(recent.nextTurnsCursor);
+  assert.ok(recent.turns.every((turn) => turn.items.length <= 20));
+  const older = (await desk.handle('thread.older', {
+    threadId: thread.id,
+    cursor: recent.nextTurnsCursor,
+    recent: true,
+  })) as { data: Turn[]; nextCursor: string | null };
+  assert.equal(older.data[0].id, turn.id);
+  assert.equal(older.data[0].items.filter((item) => item.type === 'userMessage').length, 3);
+  const itemHead = await desk.codex.request<{ data: { item: { id: string } }[]; nextCursor: string }>(
+    'thread/items/list',
+    { threadId: thread.id, turnId: turn.id, limit: 2, sortDirection: 'desc' },
+  );
+  assert.ok(itemHead.nextCursor);
+  const itemTail = (await desk.handle('thread.items', {
+    threadId: thread.id,
+    turnId: turn.id,
+    cursor: itemHead.nextCursor,
+  })) as { data: { id: string }[]; nextCursor: string | null };
+  assert.equal(itemTail.nextCursor, null);
+  assert.deepEqual(
+    [...itemHead.data.map((entry) => entry.item.id), ...itemTail.data.map((item) => item.id)].sort(),
+    history.turns[0].items.map((item) => item.id).sort(),
+    'opaque item cursors return the complete turn without gaps or duplicates',
+  );
+  const metadata = (await desk.handle('thread.open', { threadId: thread.id, metadataOnly: true })) as Thread;
+  assert.equal(metadata.turns.length, 0);
+  assert.equal(metadata.permissionMode, 'danger-full-access');
+  assert.equal(metadata.approvalPolicy, 'never');
   console.log(
     JSON.stringify({
       passed: true,
@@ -308,6 +345,7 @@ try {
         'receipt persists before consumption; official clientId reconciles live and saved history',
       fast: 'CLI default inherited; Desk/CLI toggles synchronized; request tiers verified',
       repeatedSelections: 'all startup modes and Fast on/off confirmed without no-op notifications',
+      recentHistory: 'newest 2 turns, item pagination, earlier turns, and metadata-only YOLO attach',
       customProviderFastTier: cliFastTier,
     }),
   );
