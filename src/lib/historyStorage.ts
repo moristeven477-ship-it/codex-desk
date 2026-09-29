@@ -173,7 +173,11 @@ export class PhoneHistoryStorage implements HistoryStorage {
         all.onsuccess = () => {
           const entries = (all.result as EntryMeta[])
             .filter((entry) => entry.key !== key)
-            .sort((a, b) => a.usedAt - b.usedAt);
+            // Keep the tiny startup index until all ordinary snapshots are gone;
+            // otherwise eviction would force a network bootstrap before any cache can show.
+            .sort(
+              (a, b) => Number(a.key === 'bootstrap') - Number(b.key === 'bootstrap') || a.usedAt - b.usedAt,
+            );
           let total = entries.reduce((sum, entry) => sum + entry.bytes, bytes);
           let count =
             entries.filter((entry) => entry.key.startsWith('thread:')).length +

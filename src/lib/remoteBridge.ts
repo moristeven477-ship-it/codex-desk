@@ -5,6 +5,7 @@ export class RemoteBridge implements NativeBridge {
   readonly remote = true;
   readonly historyStorage?: PhoneHistoryStorage;
   private reads = new Map<string, Promise<unknown>>();
+  private readControllers = new Set<AbortController>();
   private listeners = new Set<(event: CodexEvent) => void>();
   private socket?: WebSocket;
   private timer?: ReturnType<typeof setTimeout>;
@@ -22,6 +23,7 @@ export class RemoteBridge implements NativeBridge {
     if (document.visibilityState === 'visible') this.wake();
   };
   private lost = () => {
+    this.cancelReads();
     clearTimeout(this.timer);
     const old = this.socket;
     this.socket = undefined;
@@ -30,12 +32,14 @@ export class RemoteBridge implements NativeBridge {
     this.emit({ kind: 'remote', online: false });
   };
   private wake = () => {
-    clearTimeout(this.timer);
-    const old = this.socket;
-    this.socket = undefined;
-    old?.close();
+    this.lost();
     this.connect();
   };
+  private cancelReads() {
+    for (const controller of this.readControllers) controller.abort();
+    this.readControllers.clear();
+    this.reads.clear();
+  }
   private emit(event: CodexEvent) {
     for (const listener of this.listeners) listener(event);
   }
@@ -56,6 +60,7 @@ export class RemoteBridge implements NativeBridge {
     };
     socket.onclose = () => {
       if (this.closed || this.socket !== socket) return;
+      this.cancelReads();
       this.online = false;
       this.emit({ kind: 'remote', online: false });
       void fetch('/v1/session', { signal: AbortSignal.timeout(5000) })
@@ -69,6 +74,7 @@ export class RemoteBridge implements NativeBridge {
   }
   dispose() {
     this.closed = true;
+    this.cancelReads();
     clearTimeout(this.timer);
     this.socket?.close();
     window.removeEventListener('online', this.wake);
@@ -84,16 +90,19 @@ export class RemoteBridge implements NativeBridge {
       this.listeners.delete(listener);
     };
   }
-  private async post(url: string, body: unknown) {
+  private async post(url: string, body: unknown, signal?: AbortSignal) {
     let response: Response;
     try {
       response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(120_000),
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(120_000)])
+          : AbortSignal.timeout(120_000),
       });
     } catch {
+      if (signal?.aborted) throw new DOMException('Read superseded by reconnect', 'AbortError');
       throw new Error(
         '连接中断，请查看会话确认是否已接收；未自动重发。 / Connection lost. Check the conversation before sending again; input was not automatically resent.',
       );
@@ -103,6 +112,7 @@ export class RemoteBridge implements NativeBridge {
       throw new Error('请重新配对 / Pair this device again.');
     }
     const result = await response.json();
+    if (signal?.aborted) throw new DOMException('Read superseded by reconnect', 'AbortError');
     if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
     return result;
   }
@@ -118,7 +128,13 @@ export class RemoteBridge implements NativeBridge {
     const key = JSON.stringify([method, params]);
     const pending = coalesce && this.reads.get(key);
     if (pending) return pending as Promise<T>;
-    const operation = this.post('/v1/rpc', { id: crypto.randomUUID(), method, params }).then((result) => {
+    const controller = coalesce ? new AbortController() : undefined;
+    if (controller) this.readControllers.add(controller);
+    const operation = this.post(
+      '/v1/rpc',
+      { id: crypto.randomUUID(), method, params },
+      controller?.signal,
+    ).then((result) => {
       if (!result.ok) throw new Error(result.error);
       return result.value as T;
     });
@@ -126,6 +142,7 @@ export class RemoteBridge implements NativeBridge {
     try {
       return await operation;
     } finally {
+      if (controller) this.readControllers.delete(controller);
       if (this.reads.get(key) === operation) this.reads.delete(key);
     }
   }

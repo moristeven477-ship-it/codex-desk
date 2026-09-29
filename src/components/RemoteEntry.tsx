@@ -72,7 +72,9 @@ export function RemoteEntry() {
       .then(async (response) => {
         if (disposed || initialRevision !== revision) return;
         if (response.status === 401) {
-          unpair();
+          // A fresh pairing form is already signed out. Its initial auth check
+          // must not erase a code the user typed while the request was pending.
+          if (bridge.current) unpair();
           return;
         }
         if (response.ok) {

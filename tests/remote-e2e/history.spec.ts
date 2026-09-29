@@ -215,7 +215,14 @@ test('storage limits evict least-recently-used histories and malformed snapshots
   await pair(page);
   const counts = await page.evaluate(async () => {
     const store = window.codexDesk!.historyStorage!;
+    const boot = await window.codexDesk!.request<Bootstrap>('bootstrap');
     await store.clear();
+    await store.write('bootstrap', {
+      ...boot,
+      connection: { phase: 'stopped' },
+      account: null,
+      approvals: [],
+    });
     const thread = (id: string, preview = ''): Thread => ({
       id,
       preview,
@@ -237,6 +244,7 @@ test('storage limits evict least-recently-used histories and malformed snapshots
     const oldestLarge = await store.read('thread:large-0');
     await store.write('thread:broken', { wrong: true });
     const broken = await store.read('thread:broken');
+    const bootstrapRetained = !!(await store.read('bootstrap'));
     return {
       count: limited.conversations,
       recent,
@@ -245,6 +253,7 @@ test('storage limits evict least-recently-used histories and malformed snapshots
       limit: bounded.limit,
       oldestLarge: oldestLarge === undefined,
       broken: broken === undefined,
+      bootstrapRetained,
     };
   });
   expect(counts.count).toBe(80);
@@ -253,6 +262,7 @@ test('storage limits evict least-recently-used histories and malformed snapshots
   expect(counts.bytes).toBeLessThanOrEqual(counts.limit);
   expect(counts.oldestLarge).toBe(true);
   expect(counts.broken).toBe(true);
+  expect(counts.bootstrapRetained).toBe(true);
 });
 
 test('unavailable persistent storage does not block online conversations', async ({ page }) => {
@@ -320,5 +330,59 @@ test('a cached empty conversation keeps its welcome screen and startup controls 
     await expect(page.locator('.user-text')).toHaveText('First message in the restored empty conversation.');
   } finally {
     bootstrap.release();
+  }
+});
+
+test('reconnecting abandons a stalled history read instead of waiting for its old network timeout', async ({
+  page,
+}) => {
+  await pair(page);
+  await selectHistory(page);
+  await expect(page.locator('.user-text')).toHaveText('Explain this project.');
+  await saved(page, 'fixture-history');
+  const oldConnection = gate();
+  let bootstraps = 0;
+  await page.route('**/v1/rpc', async (route) => {
+    if (route.request().postDataJSON().method === 'bootstrap' && ++bootstraps === 1)
+      await oldConnection.promise;
+    await route.continue().catch(() => {});
+  });
+  try {
+    await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+    await expect(page.locator('.remote-offline')).toBeVisible();
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await expect.poll(() => bootstraps).toBe(1);
+    await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+    await expect(page.locator('.remote-offline')).toBeVisible();
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await expect.poll(() => bootstraps, { timeout: 3000 }).toBe(2);
+    await expect(page.locator('.history-sync-status')).toHaveCount(0);
+    await expect(page.locator('.user-text')).toHaveText('Explain this project.');
+    await expect(page.locator('.error-banner')).toHaveCount(0);
+  } finally {
+    oldConnection.release();
+  }
+});
+
+test('the initial unauthenticated session check cannot erase a pairing code entered while it is pending', async ({
+  page,
+}) => {
+  const session = gate();
+  await page.route('**/v1/session', async (route) => {
+    await session.promise;
+    await route.continue();
+  });
+  try {
+    await page.goto(f.gateway.status.localOrigin);
+    const code = f.gateway.createPairing().code;
+    const input = page.getByRole('textbox', { name: 'Pairing code', exact: true });
+    await input.fill(code);
+    session.release();
+    await expect(page.getByRole('button', { name: 'Pair and connect' })).toBeEnabled();
+    await expect(input).toHaveValue(code);
+    await page.getByRole('button', { name: 'Pair and connect' }).click();
+    await expect(page.getByRole('heading', { name: 'What’s on your mind?' })).toBeVisible();
+  } finally {
+    session.release();
   }
 });

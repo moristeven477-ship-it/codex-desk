@@ -97,7 +97,11 @@ export function useDesk() {
   const sendingRef = useRef(false);
   const settingsWrites = useRef<Promise<unknown>>(Promise.resolve());
   const settingsRevision = useRef(0);
-  const fail = useCallback((e: unknown) => setError(e instanceof Error ? e.message : String(e)), []);
+  const fail = useCallback((e: unknown) => {
+    // Read-only HTTP requests are intentionally replaced after a network change.
+    if (e instanceof DOMException && e.name === 'AbortError') return;
+    setError(e instanceof Error ? e.message : String(e));
+  }, []);
   const prepareTerminal = useCallback((thread: Thread) => {
     if (window.codexDesk?.remote) return;
     if (thread.syncState === 'external') {
