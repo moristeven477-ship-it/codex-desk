@@ -31,18 +31,44 @@ jobs:
           path: test-results/
   android:
     runs-on: ubuntu-24.04
+    env:
+      GOMAXPROCS: '4'
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: android/tailnet/go.mod
+          cache-dependency-path: android/tailnet/go.sum
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools platforms;android-36 build-tools;35.0.0'
+          packages: 'platform-tools platforms;android-36 build-tools;35.0.0 ndk;29.0.14206865'
       - uses: gradle/actions/setup-gradle@v4
+      - run: go test -race -p=4 ./...
+        working-directory: android/tailnet
       - run: ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleDebug --no-daemon
         working-directory: android
+      - run: npm ci && npm run build
+      - name: Enable KVM for the isolated Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Embedded engine and WebView integration
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          emulator-options: -no-window -gpu swangle -feature -Vulkan -no-snapshot -noaudio -no-boot-anim -cores 2 -memory 3072
+          disable-animations: true
+          script: cd android/tailnet && DESK_ANDROID_EMBEDDED=1 ANDROID_SERIAL=emulator-5554 go test -p=4 -timeout=25m -run TestAndroidEmbeddedEndToEnd -v
       - uses: actions/upload-artifact@v4
         with:
           name: codex-desk-android-debug

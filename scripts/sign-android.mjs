@@ -51,7 +51,7 @@ await mkdir('release', { recursive: true });
 const output = path.resolve(`release/codex-desk-${version}-android.apk`);
 const unsigned = path.resolve('android/app/build/outputs/apk/release/app-release-unsigned.apk');
 const tools = path.join(sdk, 'build-tools/35.0.0');
-execFileSync(path.join(tools, 'zipalign'), ['-f', '4', unsigned, output], { stdio: 'inherit' });
+execFileSync(path.join(tools, 'zipalign'), ['-f', '-P', '16', '4', unsigned, output], { stdio: 'inherit' });
 execFileSync(
   path.join(tools, 'apksigner'),
   ['sign', '--ks', key, '--ks-key-alias', 'codex-desk', '--ks-pass', `file:${password}`, output],
@@ -60,6 +60,7 @@ execFileSync(
 execFileSync(path.join(tools, 'apksigner'), ['verify', '--verbose', '--print-certs', output], {
   stdio: 'inherit',
 });
+execFileSync(path.join(tools, 'zipalign'), ['-c', '-P', '16', '4', output], { stdio: 'inherit' });
 execFileSync(keytool, [
   '-exportcert',
   '-rfc',
@@ -73,4 +74,8 @@ execFileSync(keytool, [
   path.join(signing, 'release-cert.pem'),
 ]);
 await copyFile(path.join(signing, 'release-cert.pem'), 'android/release-cert.pem');
+await writeFile(
+  'android/release-cert.pem',
+  (await readFile('android/release-cert.pem', 'utf8')).replaceAll('\r\n', '\n'),
+);
 console.log(`Signed ${output}. Keep the private signing directory backed up for future updates.`);

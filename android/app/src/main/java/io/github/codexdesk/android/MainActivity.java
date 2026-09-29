@@ -36,6 +36,9 @@ import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import androidx.webkit.ProxyConfig;
+import androidx.webkit.ProxyController;
+import androidx.webkit.WebViewFeature;
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 
@@ -45,7 +48,12 @@ public class MainActivity extends Activity {
     private WebView browser;
     private LinearLayout failure;
     private TextView failureText;
-    private Button tailscaleButton;
+    private NativeTailnet tailnet;
+    private TextView tailnetStatus;
+    private Button loginButton, logoutButton, connectButton;
+    private boolean pendingLogin, resumeConnection, connecting, destroyed;
+    private int connectionRevision, transportGeneration;
+    private final NativeTailnet.Listener tailnetListener = this::tailnetChanged;
     private String origin;
     private ValueCallback<Uri[]> files;
     private ConnectivityManager connectivity;
@@ -70,14 +78,16 @@ public class MainActivity extends Activity {
             return insets;
         });
         setContentView(root);
+        tailnet = NativeTailnet.get(this);
         connectivity = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
         networkCallback = new ConnectivityManager.NetworkCallback() {
-            @Override public void onAvailable(Network network) { runOnUiThread(() -> wake()); }
+            @Override public void onAvailable(Network network) { runOnUiThread(() -> { tailnet.networkChanged(); wake(); }); }
         };
         connectivity.registerDefaultNetworkCallback(networkCallback);
         String saved = getPreferences(MODE_PRIVATE).getString("origin", "");
-        try { origin = Endpoint.normalize(saved); showBrowser(); }
-        catch (IllegalArgumentException ignored) { showConnection(); }
+        try { origin = Endpoint.normalize(saved); resumeConnection = true; }
+        catch (IllegalArgumentException ignored) { origin = null; }
+        showConnection(false);
     }
     private int dp(int value) { return (int) (value * getResources().getDisplayMetrics().density); }
     private TextView text(String value, int size) {
@@ -92,7 +102,10 @@ public class MainActivity extends Activity {
         if (browser != null) { browser.stopLoading(); browser.destroy(); browser = null; }
         CookieManager.getInstance().flush();
     }
-    private void showConnection() {
+    private void showConnection() { showConnection(true); }
+    private void showConnection(boolean userInitiated) {
+        if (userInitiated) resumeConnection = false;
+        connectionRevision++; connecting = false;
         disposeBrowser(); root.removeAllViews();
         ScrollView scroll = new ScrollView(this);
         LinearLayout column = new LinearLayout(this); column.setOrientation(LinearLayout.VERTICAL);
@@ -104,9 +117,16 @@ public class MainActivity extends Activity {
         column.addView(text(getString(R.string.intro), 16));
         column.addView(text(getString(R.string.step_tailscale), 19));
         column.addView(text(getString(R.string.tailscale_help), 15));
-        tailscaleButton = button(R.string.tailscale, v -> openTailscale());
-        column.addView(tailscaleButton);
-        updateTailscaleButton();
+        tailnetStatus = text("", 15); tailnetStatus.setContentDescription(getString(R.string.network_status));
+        column.addView(tailnetStatus);
+        loginButton = button(R.string.sign_in, v -> loginTailnet());
+        column.addView(loginButton);
+        logoutButton = button(R.string.sign_out, v -> {
+            pendingLogin = false; resumeConnection = false;
+            CookieManager.getInstance().removeAllCookies(removed -> CookieManager.getInstance().flush());
+            tailnet.logout();
+        });
+        column.addView(logoutButton);
         column.addView(text(getString(R.string.step_pair), 19));
         column.addView(text(getString(R.string.pair_help), 15));
         column.addView(text(getString(R.string.address), 14));
@@ -115,25 +135,82 @@ public class MainActivity extends Activity {
         address.setHint(R.string.address_hint); address.setText(getPreferences(MODE_PRIVATE).getString("origin", ""));
         address.setContentDescription(getString(R.string.address));
         column.addView(address, new LinearLayout.LayoutParams(-1, dp(56)));
-        column.addView(button(R.string.connect, v -> {
-            try { origin = Endpoint.normalize(address.getText().toString()); getPreferences(MODE_PRIVATE).edit().putString("origin", origin).apply(); showBrowser(); }
+        connectButton = button(R.string.connect, v -> {
+            try { origin = Endpoint.normalize(address.getText().toString()); getPreferences(MODE_PRIVATE).edit().putString("origin", origin).apply(); connectToComputer(); }
             catch (IllegalArgumentException error) { address.setError(getString(R.string.invalid_address)); }
-        }));
+        });
+        column.addView(connectButton);
+        column.addView(button(R.string.licenses, v -> showLicenses()));
         scroll.addView(column); root.addView(scroll, new LinearLayout.LayoutParams(-1, -1));
+        tailnetChanged(tailnet.state());
     }
-    private void updateTailscaleButton() {
-        if (tailscaleButton != null) tailscaleButton.setText(getPackageManager().getLaunchIntentForPackage("com.tailscale.ipn") == null ? R.string.install_tailscale : R.string.open_tailscale);
-    }
-    private void openTailscale() {
-        Intent launch = getPackageManager().getLaunchIntentForPackage("com.tailscale.ipn");
-        if (launch != null) {
-            try { startActivity(launch); return; } catch (ActivityNotFoundException ignored) { }
+    private void tailnetChanged(NativeTailnet.State state) {
+        if (destroyed) return;
+        if (tailnetStatus != null) {
+            int label = state.ready() ? R.string.network_ready : "NeedsLogin".equals(state.backend) ? R.string.network_login : "NeedsMachineAuth".equals(state.backend) ? R.string.network_approval : "Error".equals(state.backend) ? R.string.network_error : R.string.network_starting;
+            tailnetStatus.setText(label);
+            loginButton.setVisibility(state.ready() ? View.GONE : View.VISIBLE);
+            loginButton.setText("NeedsMachineAuth".equals(state.backend) ? R.string.approve_device : "Error".equals(state.backend) ? R.string.retry : R.string.sign_in);
+            logoutButton.setVisibility(state.ready() ? View.VISIBLE : View.GONE);
+            connectButton.setEnabled(state.ready() && !connecting);
         }
-        external("https://tailscale.com/download/android");
+        if (pendingLogin && Endpoint.isLoginURL(state.authUrl)) {
+            pendingLogin = false; external(state.authUrl);
+        }
+        if (state.ready()) {
+            pendingLogin = false;
+            if (!connecting && origin != null && (resumeConnection || (browser != null && transportGeneration != state.generation))) {
+                resumeConnection = false; connectToComputer();
+            }
+        }
+    }
+    private void loginTailnet() {
+        NativeTailnet.State state = tailnet.state();
+        if ("NeedsMachineAuth".equals(state.backend)) external("https://login.tailscale.com/admin/machines");
+        else if (Endpoint.isLoginURL(state.authUrl)) external(state.authUrl);
+        else if ("Error".equals(state.backend)) tailnet.retry();
+        else { pendingLogin = true; tailnet.login(); }
+    }
+    private void connectToComputer() {
+        if (origin == null || connecting) return;
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
+            Toast.makeText(this, R.string.webview_update, Toast.LENGTH_LONG).show(); return;
+        }
+        connecting = true; if (connectButton != null) connectButton.setEnabled(false);
+        int revision = ++connectionRevision;
+        tailnet.prepare(origin, proxy -> {
+            if (destroyed || revision != connectionRevision) return;
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
+                try {
+                    ProxyConfig config = new ProxyConfig.Builder().addProxyRule("http://" + proxy).removeImplicitRules().build();
+                    ProxyController.getInstance().setProxyOverride(config, this::runOnUiThread, () -> {
+                        if (destroyed || revision != connectionRevision) return;
+                        transportGeneration = tailnet.state().generation; connecting = false; showBrowser();
+                    });
+                } catch (RuntimeException error) {
+                    connecting = false; tailnetChanged(tailnet.state());
+                    Toast.makeText(this, R.string.network_error, Toast.LENGTH_LONG).show();
+                }
+            } else { connecting = false; Toast.makeText(this, R.string.webview_update, Toast.LENGTH_LONG).show(); }
+        }, error -> {
+            if (destroyed || revision != connectionRevision) return;
+            connecting = false; tailnetChanged(tailnet.state());
+            Toast.makeText(this, R.string.network_error, Toast.LENGTH_LONG).show();
+        });
+    }
+    private void showLicenses() {
+        try (java.io.InputStream source = getAssets().open("TAILNET_NOTICES.txt")) {
+            java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+            byte[] buffer = new byte[8192]; int count;
+            while ((count = source.read(buffer)) != -1) bytes.write(buffer, 0, count);
+            ScrollView scroll = new ScrollView(this); TextView content = text(bytes.toString("UTF-8"), 12);
+            content.setPadding(dp(16), dp(8), dp(16), dp(8)); content.setTextIsSelectable(true); scroll.addView(content);
+            new AlertDialog.Builder(this).setTitle(R.string.licenses).setView(scroll).setPositiveButton(android.R.string.ok, null).show();
+        } catch (java.io.IOException ignored) { Toast.makeText(this, R.string.network_error, Toast.LENGTH_SHORT).show(); }
     }
     @SuppressLint("SetJavaScriptEnabled")
     private void showBrowser() {
-        disposeBrowser(); root.removeAllViews(); tailscaleButton = null;
+        disposeBrowser(); root.removeAllViews(); tailnetStatus = null; loginButton = null; logoutButton = null; connectButton = null;
         LinearLayout toolbar = new LinearLayout(this); toolbar.setGravity(Gravity.CENTER_VERTICAL);
         toolbar.setPadding(dp(12), 0, dp(6), 0);
         TextView host = text(Uri.parse(origin).getHost(), 12); host.setSingleLine(); host.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -199,8 +276,8 @@ public class MainActivity extends Activity {
         content.addView(browser, new FrameLayout.LayoutParams(-1, -1));
         failure = new LinearLayout(this); failure.setOrientation(LinearLayout.VERTICAL); failure.setGravity(Gravity.CENTER); failure.setPadding(dp(24), dp(24), dp(24), dp(24)); failure.setBackgroundColor(BG);
         failureText = text("", 17); failureText.setGravity(Gravity.CENTER); failure.addView(failureText);
-        failure.addView(button(R.string.retry, v -> { failure.setVisibility(View.GONE); browser.reload(); }));
-        failure.addView(button(R.string.open_tailscale, v -> openTailscale()));
+        failure.addView(button(R.string.retry, v -> { if (tailnet.state().ready()) connectToComputer(); else { showConnection(); tailnet.retry(); } }));
+        failure.addView(button(R.string.connection_settings, v -> showConnection()));
         failure.setVisibility(View.GONE); content.addView(failure, new FrameLayout.LayoutParams(-1, -1));
         browser.loadUrl(origin + "/");
     }
@@ -216,7 +293,9 @@ public class MainActivity extends Activity {
         if (failure != null && failure.getVisibility() == View.VISIBLE) { failure.setVisibility(View.GONE); browser.reload(); }
         else browser.evaluateJavascript("window.dispatchEvent(new Event('online'))", null);
     }
-    @Override protected void onResume() { super.onResume(); updateTailscaleButton(); wake(); }
+    @Override protected void onStart() { super.onStart(); tailnet.listen(tailnetListener); }
+    @Override protected void onStop() { tailnet.unlisten(tailnetListener); super.onStop(); }
+    @Override protected void onResume() { super.onResume(); tailnet.networkChanged(); wake(); }
     @Override protected void onPause() { CookieManager.getInstance().flush(); super.onPause(); }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
@@ -231,6 +310,7 @@ public class MainActivity extends Activity {
         files.onReceiveValue(selected.isEmpty() ? null : selected.toArray(new Uri[0])); files = null;
     }
     @Override protected void onDestroy() {
+        destroyed = true; connectionRevision++; tailnet.unlisten(tailnetListener);
         connectivity.unregisterNetworkCallback(networkCallback); disposeBrowser(); super.onDestroy();
     }
 }

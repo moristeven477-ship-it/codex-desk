@@ -39,7 +39,7 @@ _Screenshots show a synthetic test workspace. The application uses your real loc
 
 ## Android remote control
 
-Install the Android APK and connect through **Tailscale** to this computer. The phone shares CLI conversations, settings, steering, approvals, goals and the embedded CLI. Changing Wi-Fi/cellular IP addresses does not require reconfiguration. Choose **Settings → Phone access → Set up phone access** on Ubuntu: Desk installs Tailscale when needed and configures the address automatically after you sign in. Android guides you through enabling Tailscale and entering the address and one-time pairing code. [Installation and pairing guide](docs/ANDROID.md).
+Install the Android APK and connect through **Tailscale** to this computer. The phone shares CLI conversations, settings, steering, approvals, goals and the embedded CLI. Changing Wi-Fi/cellular IP addresses does not require reconfiguration. Choose **Settings → Phone access → Set up phone access** on Ubuntu: Desk installs Tailscale when needed and configures the address automatically after you sign in. The Android APK includes the official Tailscale engine. Sign in inside Desk, then enter the address and one-time pairing code. No separate Tailscale app or system VPN is required. [Installation and pairing guide](docs/ANDROID.md).
 
 ## Install on Ubuntu
 
@@ -61,7 +61,7 @@ If Codex already works in your terminal, keep that installation. Codex Desk disc
 Download the `.deb` from [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest), then run:
 
 ```bash
-sudo apt install ./codex-desk-0.3.1-amd64.deb
+sudo apt install ./codex-desk-0.4.0-amd64.deb
 ```
 
 Launch **Codex Desk** from Ubuntu's application menu, or run `codex-desk`.
@@ -71,14 +71,14 @@ The package includes the Electron runtime; Node.js is needed separately only for
 ### Portable AppImage
 
 ```bash
-chmod +x codex-desk-0.3.1-x86_64.AppImage
-./codex-desk-0.3.1-x86_64.AppImage
+chmod +x codex-desk-0.4.0-x86_64.AppImage
+./codex-desk-0.4.0-x86_64.AppImage
 ```
 
 If FUSE is unavailable, run without mounting the AppImage:
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.3.1-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.4.0-x86_64.AppImage
 ```
 
 The `.deb` is recommended on Ubuntu 24.04: its installer includes Electron's Ubuntu AppArmor integration. Do not disable Chromium's sandbox to work around an installation problem. See [Troubleshooting](docs/TROUBLESHOOTING.md).

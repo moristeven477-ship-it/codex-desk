@@ -198,14 +198,14 @@ export function RemoteSettings({ onError }: { onError: (error: unknown) => void 
         <ol className="remote-phone-steps">
           <li>
             {t(
-              '安装 Codex Desk 安卓版，在 App 中点击「安装 / 打开 Tailscale」。',
-              'Install Codex Desk for Android, then tap Install / Open Tailscale in the app.',
+              '安装 Codex Desk 安卓版。APK 已内置 Tailscale，无需另装应用。',
+              'Install Codex Desk for Android. Tailscale is included in the APK; no separate app is needed.',
             )}
           </li>
           <li>
             {t(
-              '登录相同账号，打开 Tailscale，并接受安卓的 VPN 连接提示。',
-              'Use the same account, switch on Tailscale and accept Android’s VPN connection prompt.',
+              '在安卓 Desk 点击「登录内置 Tailscale」，使用与电脑相同的账号。',
+              'In Android Desk, tap Sign in to built-in Tailscale and use the same account as your computer.',
             )}
           </li>
           <li>

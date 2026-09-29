@@ -6,6 +6,12 @@ import java.util.Locale;
 /** Only authenticated HTTPS origins served inside a Tailscale network. */
 public final class Endpoint {
     private Endpoint() {}
+    public static boolean isLoginURL(String value) {
+        try {
+            URI uri = new URI(value);
+            return "https".equals(uri.getScheme()) && "login.tailscale.com".equals(uri.getHost()) && uri.getUserInfo() == null && (uri.getPort() == -1 || uri.getPort() == 443);
+        } catch (Exception ignored) { return false; }
+    }
     public static String normalize(String input) {
         try {
             String value = input.trim();

@@ -1,14 +1,25 @@
 plugins { id 'com.android.application' }
+def buildTailnet = tasks.register('buildTailnet', Exec) {
+    workingDir rootProject.projectDir.parentFile
+    commandLine 'node', 'scripts/build-android-tailnet.mjs'
+    inputs.files(fileTree('../tailnet') { include '**/*.go', 'go.mod', 'go.sum' })
+    inputs.file('../../scripts/build-android-tailnet.mjs')
+    inputs.file('../ANDROIDX_LICENSE.txt')
+    inputs.file('../../LICENSE')
+    outputs.dir(layout.buildDirectory.dir('tailnet'))
+}
 android {
     namespace 'io.github.codexdesk.android'
     compileSdk 36
+    ndkVersion '29.0.14206865'
     buildFeatures { buildConfig true }
     defaultConfig {
         applicationId 'io.github.codexdesk.android'
         minSdk 26
         targetSdk 36
-        versionCode 301
-        versionName '0.3.1'
+        versionCode 400
+        versionName '0.4.0'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -16,7 +27,22 @@ android {
     }
     buildTypes {
         release { minifyEnabled false }
+        // This variant alone trusts an ephemeral, locally generated test CA.
+        integration { initWith debug; applicationIdSuffix '.integration'; matchingFallbacks = ['debug'] }
+    }
+    testBuildType project.hasProperty('embeddedTest') ? 'integration' : 'debug'
+    sourceSets {
+        main.assets.srcDir(layout.buildDirectory.dir('tailnet/assets'))
+        integration.res.srcDir(layout.buildDirectory.dir('embedded-res'))
     }
     lint { abortOnError true }
 }
-dependencies { testImplementation 'junit:junit:4.13.2' }
+tasks.named('preBuild').configure { dependsOn buildTailnet }
+dependencies {
+    implementation files(layout.buildDirectory.file('tailnet/tailnet.aar')).builtBy(buildTailnet)
+    implementation 'androidx.webkit:webkit:1.16.0'
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test:runner:1.7.0'
+    androidTestImplementation 'androidx.test:core:1.7.0'
+    androidTestImplementation 'androidx.test.ext:junit:1.3.0'
+}
