@@ -22,6 +22,43 @@ async function openSettings(page: Page) {
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
 }
 
+test('sending before a new thread finishes opening clears the migrated draft without clearing later edits', async ({
+  page,
+}) => {
+  const handle = f.service.handle.bind(f.service);
+  let releaseCreation!: () => void;
+  const creating = new Promise<void>((resolve) => {
+    releaseCreation = resolve;
+  });
+  let releaseTurn: (() => void) | undefined;
+  let turnGate: Promise<void> | undefined;
+  f.service.handle = async (method, params) => {
+    if (method === 'thread.create') await creating;
+    if (method === 'turn.start' && turnGate) await turnGate;
+    return handle(method, params);
+  };
+  await pair(page);
+  const composer = page.getByRole('textbox', { name: 'Message Codex' });
+  const first = 'Send this before the new conversation has finished opening.';
+  await composer.fill(first);
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  releaseCreation();
+  await expect(page.locator('.user-text')).toHaveText(first);
+  await expect(composer).toHaveValue('');
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
+  turnGate = new Promise<void>((resolve) => {
+    releaseTurn = resolve;
+  });
+  await composer.fill('Send the second message.');
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  await composer.fill('Keep this new draft while the previous send finishes.');
+  releaseTurn!();
+  await expect(page.locator('.user-text')).toHaveCount(2);
+  await expect(composer).toHaveValue('Keep this new draft while the previous send finishes.');
+  await page.reload();
+  await expect(composer).toHaveValue('Keep this new draft while the previous send finishes.');
+});
+
 test('compact phone layout keeps a growing draft and send controls visible with a short viewport', async ({
   page,
 }) => {

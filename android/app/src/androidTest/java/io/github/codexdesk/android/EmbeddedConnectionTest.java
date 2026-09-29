@@ -56,7 +56,13 @@ public class EmbeddedConnectionTest {
         try { assertTrue("WebView callback", done.await(5, TimeUnit.SECONDS)); } catch (InterruptedException error) { throw new AssertionError(error); }
         return value.get();
     }
-    private void page(String description, String condition) { eventually(description, () -> "true".equals(js(condition))); }
+    private void page(String description, String condition) {
+        try { eventually(description, () -> "true".equals(js(condition))); }
+        catch (AssertionError error) {
+            String layout = js("JSON.stringify({userAgent:navigator.userAgent,width:innerWidth,height:innerHeight,viewport:visualViewport.height,font:getComputedStyle(document.documentElement).fontSize,header:!!document.querySelector('.mobile-header'),composer:document.querySelector('.composer')?.getBoundingClientRect().height,input:document.querySelector('.composer textarea')?.getBoundingClientRect().height})");
+            throw new AssertionError(error.getMessage()+"; layout="+layout, error);
+        }
+    }
     private void tapWeb(String selector) throws Exception {
         js("document.querySelector('"+selector+"').scrollIntoView({block:'nearest'})");
         SystemClock.sleep(220); // Wait for the sheet's entrance animation before a physical tap.
@@ -72,12 +78,24 @@ public class EmbeddedConnectionTest {
         long time = SystemClock.uptimeMillis();
         MotionEvent down = MotionEvent.obtain(time, time, MotionEvent.ACTION_DOWN, screenPoint[0], screenPoint[1], 0);
         MotionEvent up = MotionEvent.obtain(time, time+80, MotionEvent.ACTION_UP, screenPoint[0], screenPoint[1], 0);
-        InstrumentationRegistry.getInstrumentation().sendPointerSync(down);
-        InstrumentationRegistry.getInstrumentation().sendPointerSync(up);
-        down.recycle(); up.recycle();
+        try {
+            InstrumentationRegistry.getInstrumentation().sendPointerSync(down);
+            InstrumentationRegistry.getInstrumentation().sendPointerSync(up);
+        } catch (IllegalArgumentException error) {
+            String layout = js("JSON.stringify({visible:document.visibilityState,focused:document.hasFocus(),width:innerWidth,height:innerHeight,viewport:visualViewport.height,offset:visualViewport.offsetTop,rect:document.querySelector('"+selector+"').getBoundingClientRect().toJSON()})");
+            throw new AssertionError("Tap "+selector+" at "+screenPoint[0]+","+screenPoint[1]+"; "+layout, error);
+        } finally { down.recycle(); up.recycle(); }
     }
     private void back() throws Exception {
-        InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand("input keyevent 4").close();
+        try (java.io.InputStream result = new android.os.ParcelFileDescriptor.AutoCloseInputStream(
+                InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand("input keyevent 4"))) {
+            byte[] buffer = new byte[128]; while (result.read(buffer) != -1) { }
+        }
+    }
+    private boolean keyboardVisible() {
+        AtomicReference<Boolean> shown = new AtomicReference<>(false);
+        activity.onActivity(screen -> shown.set(screen.getWindow().getDecorView().getRootWindowInsets().isVisible(WindowInsets.Type.ime())));
+        return shown.get();
     }
     private void connect(String origin) {
         eventually("native connected", () -> NativeTailnet.get(context()).state().ready());
@@ -107,6 +125,7 @@ public class EmbeddedConnectionTest {
             }
             String received = "document.body.innerText.includes('Your local Codex conversation is working.') && document.querySelectorAll('.user-text').length===1 && document.querySelector('.user-text').textContent==='"+MESSAGE+"' && !document.querySelector('.remote-offline')";
             page("one reply through encrypted tailnet", received);
+            page("sent draft cleared", "document.querySelector('.composer textarea')?.value===''");
             page("compact mobile shell loaded", "navigator.userAgent.includes('CodexDeskAndroid/') && !!document.querySelector('.mobile-header') && document.querySelector('.composer').getBoundingClientRect().height<=105");
             activity.onActivity(screen -> {
                 Button nativeSettings = find(screen.getWindow().getDecorView(), Button.class, screen.getString(R.string.connection_settings));
@@ -119,13 +138,11 @@ public class EmbeddedConnectionTest {
                 back();
                 page("system Back dismisses tools without leaving chat", "!document.querySelector('.dialog') && !!document.querySelector('.composer')");
                 tapWeb(".composer textarea");
-                eventually("real Android soft keyboard visible", () -> {
-                    AtomicReference<Boolean> shown = new AtomicReference<>(false);
-                    activity.onActivity(screen -> shown.set(screen.getWindow().getDecorView().getRootWindowInsets().isVisible(WindowInsets.Type.ime())));
-                    return shown.get();
-                });
+                eventually("real Android soft keyboard visible", this::keyboardVisible);
                 page("send button stays above soft keyboard", "(()=>{const r=document.querySelector('.send-button').getBoundingClientRect();return r.bottom<=visualViewport.height+1 && r.top>=0})()");
                 back();
+                eventually("soft keyboard dismissed before next tap", () -> !keyboardVisible());
+                page("keyboard Back keeps the conversation visible", "document.visibilityState==='visible' && document.hasFocus()");
                 tapWeb(".composer .picker-trigger");
                 page("session sheet opened", "!!document.querySelector('.choice-sheet-backdrop')");
                 back();

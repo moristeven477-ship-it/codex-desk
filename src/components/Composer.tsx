@@ -125,8 +125,10 @@ export function Composer({
   const [steerSent, setSteerSent] = useState(false);
   const [speedPending, setSpeedPending] = useState(false);
   const speedLock = useRef(false);
-  const latestDraft = useRef(draft);
+  const latestDraft = useRef(draft),
+    latestOnDraft = useRef(onDraft);
   latestDraft.current = draft;
+  latestOnDraft.current = onDraft;
   useEffect(() => setSteerSent(false), [activeTurnId]);
   const [importing, setImporting] = useState(false);
   const importingRef = useRef(false),
@@ -248,7 +250,8 @@ export function Composer({
     if (slash && connected && !sending && !archived && !lock.current) {
       lock.current = true;
       try {
-        if (await command(slash.name, slash.args)) onDraft('');
+        if ((await command(slash.name, slash.args)) && latestDraft.current === draft)
+          latestOnDraft.current('');
       } catch (error) {
         onError(error);
       } finally {
@@ -275,7 +278,9 @@ export function Composer({
             modeOverride,
           );
       if (sent) {
-        if (latestDraft.current === draft) onDraft('');
+        // The first send may finish after App migrates the draft from its
+        // temporary workspace key to the newly created CLI thread ID.
+        if (latestDraft.current === draft) latestOnDraft.current('');
         setImages((current) => current.filter((image) => !images.some((sent) => sent.path === image.path)));
         if (running) setSteerSent(true);
         else clearOverrides();
@@ -377,7 +382,7 @@ export function Composer({
           onSelect={(name) => {
             void command(name)
               .then((ok) => {
-                if (ok && draft.trim() === '/') onDraft('');
+                if (ok && draft.trim() === '/' && latestDraft.current === draft) latestOnDraft.current('');
               })
               .catch(onError);
           }}

@@ -312,6 +312,14 @@ public class MainActivity extends Activity {
         else browser.evaluateJavascript("window.dispatchEvent(new Event('online'))", null);
     }
     private void navigateBack() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsets insets = root.getRootWindowInsets();
+            if (insets != null && insets.isVisible(WindowInsets.Type.ime())) {
+                android.view.WindowInsetsController controller = root.getWindowInsetsController();
+                if (controller != null) controller.hide(WindowInsets.Type.ime());
+                return;
+            }
+        }
         if (browser == null) { moveTaskToBack(true); return; }
         WebView current = browser;
         current.evaluateJavascript("!document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}))", handled -> {
