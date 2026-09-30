@@ -19,6 +19,7 @@ import { request } from '../lib/useDesk';
 import { FontSizeControl } from './FontSizeControl';
 import { RemoteSettings } from './RemoteSettings';
 import { HistoryStorageSettings } from './HistoryStorageSettings';
+import { UpdateSettings } from './UpdateSettings';
 
 export function Settings({
   boot,
@@ -146,6 +147,13 @@ export function Settings({
                 onError={onError}
               />
               {remote && <HistoryStorageSettings />}
+              {!remote && (
+                <UpdateSettings
+                  enabled={boot.settings.autoUpdate !== false}
+                  onChange={(autoUpdate) => onSave({ autoUpdate })}
+                  onError={onError}
+                />
+              )}
               <div className="about-card">
                 <img src="./icon.svg" alt="" />
                 <div>
@@ -227,9 +235,29 @@ export function Settings({
                 <span className={`status-dot ${boot.connection.phase === 'ready' ? '' : 'offline'}`} />
                 <div>
                   <strong>{boot.connection.version || t('尚未连接', 'Not connected')}</strong>
+                  {boot.connection.installedVersion &&
+                    boot.connection.installedVersion !== boot.connection.version && (
+                      <small>
+                        {t('已安装：', 'Installed: ')}
+                        {boot.connection.installedVersion}
+                      </small>
+                    )}
                   <small>{boot.connection.binary || 'npm install -g @openai/codex'}</small>
                 </div>
               </div>
+              {boot.connection.updatePending && (
+                <p className="settings-help">
+                  {boot.connection.updatePending === 'busy'
+                    ? t(
+                        '新版后台将在所有共享任务结束后自动启用。',
+                        'The new backend will start after all shared tasks finish.',
+                      )
+                    : t(
+                        '此后台由其他程序管理，请通过该程序更新。',
+                        'Another application manages this backend. Update it through that application.',
+                      )}
+                </p>
+              )}
               <label className="field-label">
                 {t('Codex 可执行文件', 'Codex executable')}
                 <input

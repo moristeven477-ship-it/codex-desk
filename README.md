@@ -67,7 +67,7 @@ If Codex already works in your terminal, keep that installation. Codex Desk disc
 Download the `.deb` from [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest), then run:
 
 ```bash
-sudo apt install ./codex-desk-0.6.1-amd64.deb
+sudo apt install ./codex-desk-0.7.0-amd64.deb
 ```
 
 Launch **Codex Desk** from Ubuntu's application menu, or run `codex-desk`.
@@ -77,14 +77,14 @@ The package includes the Electron runtime; Node.js is needed separately only for
 ### Portable AppImage
 
 ```bash
-chmod +x codex-desk-0.6.1-x86_64.AppImage
-./codex-desk-0.6.1-x86_64.AppImage
+chmod +x codex-desk-0.7.0-x86_64.AppImage
+./codex-desk-0.7.0-x86_64.AppImage
 ```
 
 If FUSE is unavailable, run without mounting the AppImage:
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.6.1-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.7.0-x86_64.AppImage
 ```
 
 The `.deb` is recommended on Ubuntu 24.04: its installer includes Electron's Ubuntu AppArmor integration. Do not disable Chromium's sandbox to work around an installation problem. See [Troubleshooting](docs/TROUBLESHOOTING.md).
@@ -157,7 +157,7 @@ Completion banners disappear after eight seconds and can be dismissed or clicked
 
 ## Local data and authentication
 
-The renderer talks to Electron through validated IPC. Desk connects to the official app-server using **WebSocket over a local Unix domain socket**, without a TCP listener by default. Optional phone access adds a loopback-only gateway behind Tailscale Serve HTTPS; see the [Android guide](docs/ANDROID.md). If absent, it starts the shared server. npm installations that cannot use `app-server daemon start` use a detached official `app-server --listen unix://…` listener. No application telemetry is added.
+The renderer talks to Electron through validated IPC. Desk connects to the official app-server using **WebSocket over a local Unix domain socket**, without a TCP listener by default. Optional phone access adds a loopback-only gateway behind Tailscale Serve HTTPS; see the [Android guide](docs/ANDROID.md). If absent, it starts the shared server. npm installations that cannot use `app-server daemon start` use a detached official `app-server --listen unix://…` listener. Desk detects CLI upgrades and switches its own backend when shared work is idle, preserving live settings. User-owned AppImages also download verified stable Desk releases and install automatically while idle; control both behaviors in **Settings → General → Automatic updates**. See [update and rollback details](docs/TROUBLESHOOTING.md#automatic-desk-updates--desk-自动更新). No application telemetry is added.
 
 - Conversations and authentication remain in Codex's own home directory, normally `~/.codex`.
 - Project bookmarks and preferences are stored in Electron's user-data directory, normally `~/.config/Codex Desk/state.json`.
@@ -174,7 +174,7 @@ The file inspector validates canonical paths and rejects symbolic links that esc
 
 - The file/Git inspector is read-only; ask Codex to make edits.
 - Live synchronization requires the shared server. An already-running standalone CLI needs the one-time reconnect described above.
-- No public hosting, automatic updater, scheduling, or other AI-provider adapters. Remote access uses your Tailscale network and a paired device.
+- No public hosting, scheduling, or other AI-provider adapters. Remote access uses your Tailscale network and a paired device. Automatic desktop updates require a writable, user-owned AppImage.
 - Android uses its native image picker and the remote interface. Background push notifications and physical-device certification are not included.
 - MCP form requests currently use a JSON response field. Unsupported client protocol requests are rejected explicitly instead of silently approved.
 
@@ -198,6 +198,7 @@ npx playwright install chromium
 npm run test:e2e
 npm run build
 npm run package:linux
+xvfb-run -a dbus-run-session --config-file tests/fixtures/terminal-session.conf -- node scripts/update-smoke.mjs
 ```
 
 Packages appear in `release/`. The native smoke check uses a synthetic CLI and temporary data:

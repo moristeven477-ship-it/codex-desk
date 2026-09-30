@@ -2,6 +2,66 @@ import { spawn } from 'node:child_process';
 import { createConnection } from 'node:net';
 import { mkdir, open, lstat, unlink, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
+
+type ProcessIdentity = { pid: number; startTime: string };
+
+async function processIdentity(pid: number): Promise<ProcessIdentity | undefined> {
+  if (!Number.isSafeInteger(pid) || pid < 2) return;
+  try {
+    const metadata = await lstat(`/proc/${pid}`);
+    if (metadata.uid !== process.getuid?.()) return;
+    const stat = await readFile(`/proc/${pid}/stat`, 'utf8');
+    const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+    if (fields[0] === 'Z' || !fields[19]) return;
+    return { pid, startTime: fields[19] };
+  } catch {
+    return;
+  }
+}
+
+// A PID alone is not ownership: it may have been reused since Desk last ran.
+// Check the owner's UID, process start time, and exact listener arguments.
+export async function ownedSharedListener(socket: string): Promise<ProcessIdentity | undefined> {
+  try {
+    const file = path.join(path.dirname(socket), 'codex-desk-server.json');
+    const metadata = await lstat(file);
+    const endpoint = await lstat(socket);
+    if (
+      !metadata.isFile() ||
+      metadata.uid !== process.getuid?.() ||
+      !endpoint.isSocket() ||
+      endpoint.uid !== process.getuid?.()
+    )
+      return;
+    const saved = JSON.parse(await readFile(file, 'utf8')) as Partial<ProcessIdentity>;
+    const live = await processIdentity(saved.pid!);
+    if (!live || (saved.startTime && saved.startTime !== live.startTime)) return;
+    const args = (await readFile(`/proc/${live.pid}/cmdline`, 'utf8')).split('\0');
+    const listen = args.indexOf('--listen');
+    if (!args.includes('app-server') || listen < 0 || args[listen + 1] !== `unix://${socket}`) return;
+    return live;
+  } catch {
+    return;
+  }
+}
+
+export async function stopOwnedSharedListener(socket: string, expected: ProcessIdentity): Promise<void> {
+  const live = await ownedSharedListener(socket);
+  if (!live || live.pid !== expected.pid || live.startTime !== expected.startTime)
+    throw new Error('The Codex listener changed before the update. / Codex 后台已变化，请重试。');
+  process.kill(live.pid, 'SIGTERM');
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const current = await processIdentity(live.pid);
+    if (!current || current.startTime !== live.startTime) {
+      if (!(await socketReady(socket))) return;
+      throw new Error('Another Codex listener started during the update.');
+    }
+    await delay(100);
+  }
+  // Do not escalate to SIGKILL: another client may have started work meanwhile.
+  throw new Error('Codex is still shutting down; reconnect shortly. / Codex 正在退出，请稍后重连。');
+}
 
 export async function socketReady(socket: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -60,7 +120,9 @@ export async function startSharedListener(binary: string, env: NodeJS.ProcessEnv
   for (let attempt = 0; attempt < 100; attempt++) {
     if (await socketReady(socket)) {
       if (child.exitCode === null && child.pid)
-        await writeFile(pidFile, JSON.stringify({ pid: child.pid }), { mode: 0o600 });
+        await writeFile(pidFile, JSON.stringify((await processIdentity(child.pid)) ?? { pid: child.pid }), {
+          mode: 0o600,
+        });
       return;
     }
     if (startupError) throw startupError;

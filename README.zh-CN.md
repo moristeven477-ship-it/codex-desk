@@ -67,7 +67,7 @@ codex login
 从 [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest) 下载 `.deb`：
 
 ```bash
-sudo apt install ./codex-desk-0.6.1-amd64.deb
+sudo apt install ./codex-desk-0.7.0-amd64.deb
 ```
 
 安装后在 Ubuntu 应用菜单中打开 **Codex Desk**，或运行 `codex-desk`。
@@ -75,14 +75,14 @@ sudo apt install ./codex-desk-0.6.1-amd64.deb
 也可下载便携 AppImage：
 
 ```bash
-chmod +x codex-desk-0.6.1-x86_64.AppImage
-./codex-desk-0.6.1-x86_64.AppImage
+chmod +x codex-desk-0.7.0-x86_64.AppImage
+./codex-desk-0.7.0-x86_64.AppImage
 ```
 
 没有 FUSE 时：
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.6.1-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.7.0-x86_64.AppImage
 ```
 
 Ubuntu 24.04 优先使用 `.deb`，安装器包含 Electron 的 AppArmor 集成。遇到沙箱错误时参考[故障排查](docs/TROUBLESHOOTING.md)，不要通过关闭沙箱解决。
@@ -128,6 +128,8 @@ Ubuntu 24.04 优先使用 `.deb`，安装器包含 Electron 的 AppArmor 集成�
 
 应用通过本机 Unix socket 上的 WebSocket 连接官方 `codex app-server`，默认不监听 TCP 端口。可选手机连接启用仅监听本机回环地址的网关，由 Tailscale Serve 提供网络内 HTTPS；不收集应用遥测。服务不存在时自动启动；npm 版无法使用官方 daemon 安装入口时，会启动独立于 Desk 生命周期的官方 Unix 监听进程。
 
+0.7.0 起，Desk 会识别已安装 CLI 与实际后台的版本差异，在共享任务空闲后切换新版后台并恢复会话设置。个人目录中的 AppImage 也会自动下载、校验 Desk 正式版，在空闲时安装重启并保留上一版。「设置 → 通用 → 自动更新」可控制这两项行为；[更新与回退说明](docs/TROUBLESHOOTING.md#automatic-desk-updates--desk-自动更新)。
+
 - 会话与登录凭证仍由 Codex 管理，通常位于 `~/.codex`。
 - 项目书签与偏好通常位于 `~/.config/Codex Desk/state.json`。
 - 粘贴图片以私有 PNG 文件保存于 `~/.config/Codex Desk/attachments/`，会持续保留以便 CLI 读取历史引用。重启 Desk 不会恢复尚未发送的图片选择。
@@ -136,7 +138,7 @@ Ubuntu 24.04 优先使用 `.deb`，安装器包含 Electron 的 AppArmor 集成�
 - 文件面板是只读预览；文件编辑由 Codex 完成。移除书签不会删除项目文件。
 - 实时同步要求 CLI 与 Desk 连接同一共享服务，独立 CLI 需要按下方说明重新连接一次。
 - 关闭 Desk 会断开它的客户端，共享服务与运行任务继续保留。
-- 远程访问使用 Tailscale 网络及设备配对；本版不含公网托管、自动更新、定时任务或其他模型代理的接入。
+- 远程访问使用 Tailscale 网络及设备配对；本版不含公网托管、定时任务或其他模型代理的接入。电脑端自动更新适用于个人目录中可写的 AppImage。
 - MCP 表单暂用 JSON 字段回答；尚未实现的客户端协议请求会明确拒绝。
 
 ## CLI 与 Desk 双向同步

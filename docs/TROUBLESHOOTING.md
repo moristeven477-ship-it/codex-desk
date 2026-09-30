@@ -41,6 +41,20 @@ The normal endpoint is `$CODEX_HOME/app-server-control/app-server-control.sock`.
 
 On npm installations, `codex app-server daemon start` can report that the managed standalone install is missing. Desk starts the official Unix listener directly in that case; no replacement Codex installation is necessary. Its startup log is `app-server-control/codex-desk-server.log` under Codex home. Reconnect in Settings after addressing a startup failure. Desk only removes a stale socket it previously created when its recorded process has exited.
 
+Starting with 0.7.0, Desk displays the **running backend version**, separately from the installed CLI when they differ. With automatic updates enabled, it checks the installed CLI at connection time and every minute. A newer stable CLI replaces a Desk-owned backend once all shared threads and goals are idle. Live model, reasoning, speed and permission settings are restored. Running work, unknown activity, and listeners owned by other applications prevent automatic replacement. Updating the CLI package itself still uses your existing installation method.
+
+从 0.7.0 起，设置显示**实际后台版本**；若与已安装 CLI 不同，会分别显示。开启自动更新后，连接时和每分钟检查一次。发现 CLI 新版后，等待所有共享会话及目标空闲，再更新 Desk 创建的后台，并恢复模型、推理、速度和权限设置。有任务运行、无法确认任务状态或后台由其他程序管理时，不会自动终止后台。CLI 软件包仍通过原安装方式升级。
+
+## Automatic Desk updates / Desk 自动更新
+
+**Settings → General → Automatic updates** is enabled by default. Writable, user-owned AppImages check this project's stable GitHub releases within a minute of launch and every six hours. Desk verifies the release asset's SHA-256 and length before installation. It waits until Codex has no active shared tasks or goals, the computer has had no input for at least 60 seconds, and the desktop composer has no unsent image attachments, then installs and restarts automatically. **Check for updates** runs the download check immediately. Turning the setting off also disables automatic backend replacement.
+
+Installation replaces the existing AppImage atomically so existing launchers keep working, and saves the previous executable as `<AppImage path>.previous`. To roll back, quit Desk, copy that backup over the AppImage, and reopen it. The updater does not use sudo. System `.deb` installations and development builds must use their package manager or source installation method instead. Download/verification failures leave the existing application available; use **Check for updates** to retry.
+
+「设置 → 通用 → 自动更新」默认开启。个人目录中可写的 AppImage 会在启动后一分钟内、之后每六小时检查本项目的 GitHub 正式发布，下载并校验 SHA-256 和文件长度。所有共享任务及目标空闲、电脑连续 60 秒没有输入后，会自动安装并重启。「检查更新」可立即检查并下载。关闭开关也会停用自动后台切换。
+
+更新以原子替换方式保留现有启动器路径，上一版保存在 `<AppImage 路径>.previous`。需要回退时，退出 Desk，将备份复制回原 AppImage 路径后重新打开。系统 `.deb` 安装及开发版本仍通过包管理器或源码更新。下载或校验失败不会替换现有安装。
+
 ## Startup mode blocks sending / 启动模式确认失败，无法发送
 
 If Desk 0.4.0 reports **Codex has not confirmed the startup mode**, update the **computer app to 0.4.1 or later**. Codex does not emit a settings-change notification when you select an already active mode. Desk now also reads the live CLI settings to confirm that selection. Fast on/off uses the same fix. Changed permissions still require confirmation from Codex.

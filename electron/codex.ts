@@ -7,7 +7,13 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import type { Approval, CodexEvent, Connection, JsonObject, Settings } from '../src/shared/types';
 import { APP_VERSION } from '../src/shared/version';
-import { socketReady, startSharedListener } from './shared-server';
+import {
+  ownedSharedListener,
+  socketReady,
+  startSharedListener,
+  stopOwnedSharedListener,
+} from './shared-server';
+import { newerVersion, serverVersion } from '../src/shared/versions';
 import WebSocket from 'ws';
 
 const exec = promisify(execFile);
@@ -75,6 +81,9 @@ export class CodexProcess extends EventEmitter {
   private starting?: Promise<void>;
   private tail = '';
   private generation = 0;
+  private settings?: Pick<Settings, 'binaryPath' | 'codexHome'>;
+  private refreshing?: Promise<boolean>;
+  private activity = 0;
 
   constructor(
     private timeoutMs = 60_000,
@@ -93,6 +102,7 @@ export class CodexProcess extends EventEmitter {
   start(settings: Pick<Settings, 'binaryPath' | 'codexHome'>): Promise<void> {
     if (this.connection.phase === 'ready') return Promise.resolve();
     if (this.starting) return this.starting;
+    this.settings = { ...settings };
     this.starting = this.launch(settings).finally(() => {
       this.starting = undefined;
     });
@@ -112,7 +122,8 @@ export class CodexProcess extends EventEmitter {
       });
       if (generation !== this.generation) throw new Error('Codex startup cancelled.');
       // The daemon owns the writer. Desk and the real TUI are independent subscribers.
-      // This command starts it only when absent; never restart a daemon used by other clients.
+      // Start only when absent. Runtime upgrades are handled after initialization,
+      // when we can inspect all loaded threads, including other CLI clients.
       const codexHome = env.CODEX_HOME || path.join(homedir(), '.codex');
       const socket = path.join(codexHome, 'app-server-control', 'app-server-control.sock');
       if (this.transport === 'shared' && !(await socketReady(socket))) {
@@ -207,7 +218,10 @@ export class CodexProcess extends EventEmitter {
       this.status({
         phase: 'ready',
         binary,
-        version: version.trim(),
+        version: serverVersion(initialized.userAgent)
+          ? `codex-cli ${serverVersion(initialized.userAgent)}`
+          : version.trim(),
+        installedVersion: version.trim(),
         pid: this.child?.pid,
         shared: this.transport === 'shared',
         endpoint: this.transport === 'shared' ? 'unix://' : undefined,
@@ -217,6 +231,113 @@ export class CodexProcess extends EventEmitter {
       if (generation === this.generation) this.fail(err instanceof Error ? err : new Error(String(err)));
       throw err;
     }
+  }
+
+  async isIdle(): Promise<boolean> {
+    if (this.connection.phase !== 'ready' || this.approvals.size) return false;
+    const activity = this.activity;
+    let cursor: string | null = null;
+    const seen = new Set<string>();
+    try {
+      do {
+        const page: { data: string[]; nextCursor: string | null } = await this.request('thread/loaded/list', {
+          limit: 100,
+          cursor,
+        });
+        for (const threadId of page.data) {
+          const { thread } = await this.request<{ thread: { status: { type: string } } }>('thread/read', {
+            threadId,
+            includeTurns: false,
+          });
+          if (thread.status.type !== 'idle') return false;
+          const { goal } = await this.request<{ goal: { status: string } | null }>('thread/goal/get', {
+            threadId,
+          });
+          if (goal?.status === 'active') return false;
+        }
+        cursor = page.nextCursor;
+        if (cursor && seen.has(cursor)) return false;
+        if (cursor) seen.add(cursor);
+      } while (cursor);
+      return activity === this.activity && !this.approvals.size;
+    } catch {
+      // Unknown activity is not permission to stop a shared runtime.
+      return false;
+    }
+  }
+
+  refreshRuntime(): Promise<boolean> {
+    if (this.refreshing) return this.refreshing;
+    this.refreshing = this.updateRuntime().finally(() => {
+      this.refreshing = undefined;
+    });
+    return this.refreshing;
+  }
+  private async updateRuntime(): Promise<boolean> {
+    if (this.transport !== 'shared' || this.connection.phase !== 'ready' || !this.settings) return false;
+    const generation = this.generation;
+    const settings = { ...this.settings };
+    const { binary, env } = await findCodex(settings.binaryPath);
+    if (settings.codexHome) env.CODEX_HOME = settings.codexHome;
+    const { stdout } = await exec(binary, ['--version'], { env, timeout: 10_000, maxBuffer: 64 * 1024 });
+    if (generation !== this.generation) return false;
+    const installedVersion = stdout.trim();
+    if (!newerVersion(installedVersion, this.connection.version)) {
+      if (this.connection.installedVersion !== installedVersion || this.connection.updatePending)
+        this.status({ ...this.connection, installedVersion, updatePending: undefined });
+      return false;
+    }
+    const socket = path.join(this.connection.codexHome!, 'app-server-control/app-server-control.sock');
+    const owned = await ownedSharedListener(socket);
+    this.status({ ...this.connection, installedVersion, updatePending: owned ? 'busy' : 'external' });
+    if (!owned || !(await this.isIdle()) || generation !== this.generation) return false;
+    // Recheck after the ownership probe; turns can start in another client.
+    if (!(await this.isIdle()) || generation !== this.generation) return false;
+    const snapshots: JsonObject[] = [];
+    let cursor: string | null = null;
+    do {
+      const page: { data: string[]; nextCursor: string | null } = await this.request('thread/loaded/list', {
+        limit: 100,
+        cursor,
+      });
+      for (const threadId of page.data) {
+        // A loaded thread's resume response is its live configuration. Keep it
+        // across the process change instead of silently applying CLI defaults.
+        snapshots.push({
+          ...(await this.request<JsonObject>('thread/resume', { threadId, excludeTurns: true })),
+          threadId,
+        });
+      }
+      cursor = page.nextCursor;
+    } while (cursor);
+    if (!(await this.isIdle()) || generation !== this.generation) return false;
+    await this.stop();
+    await stopOwnedSharedListener(socket, owned);
+    await this.start(settings);
+    for (const snapshot of snapshots) {
+      const resume: JsonObject = { threadId: snapshot.threadId, excludeTurns: true };
+      for (const key of [
+        'model',
+        'modelProvider',
+        'cwd',
+        'runtimeWorkspaceRoots',
+        'approvalPolicy',
+        'approvalsReviewer',
+        'serviceTier',
+      ])
+        if (snapshot[key] !== undefined) resume[key] = snapshot[key];
+      const profile = snapshot.activePermissionProfile as { id?: string } | undefined;
+      if (profile?.id) resume.permissions = profile.id;
+      if (snapshot.reasoningEffort) resume.config = { model_reasoning_effort: snapshot.reasoningEffort };
+      await this.request('thread/resume', resume);
+      const overrides: JsonObject = { threadId: snapshot.threadId };
+      for (const key of ['collaborationMode', 'multiAgentMode', 'disabledPluginIds', 'serviceTier'])
+        if (snapshot[key] !== undefined) overrides[key] = snapshot[key];
+      if (snapshot.sandbox && !profile?.id) overrides.sandboxPolicy = snapshot.sandbox;
+      if (snapshot.reasoningEffort) overrides.effort = snapshot.reasoningEffort;
+      await this.request('thread/settings/update', overrides);
+    }
+    return true;
   }
 
   request<T = unknown>(method: string, params?: JsonObject): Promise<T> {
@@ -248,6 +369,7 @@ export class CodexProcess extends EventEmitter {
   }
   private receive(message: JsonObject) {
     if (typeof message.method === 'string') {
+      if (message.method === 'turn/started' || message.method === 'thread/goal/updated') this.activity++;
       const params = (message.params ?? {}) as JsonObject;
       if (typeof message.id === 'number' || typeof message.id === 'string') {
         if (message.method === 'currentTime/read') {

@@ -5,6 +5,7 @@ import type { AppState } from '../src/shared/types';
 import { DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE } from '../src/shared/appearance';
 
 export const settingsSchema = z.object({
+  autoUpdate: z.boolean().default(true),
   binaryPath: z.string().max(4096).default(''),
   codexHome: z.string().max(4096).default(''),
   defaultWorkspace: z.string().max(4096).default(''),
@@ -16,6 +17,7 @@ export const settingsSchema = z.object({
 });
 export const settingsPatchSchema = z
   .object({
+    autoUpdate: settingsSchema.shape.autoUpdate.removeDefault(),
     binaryPath: settingsSchema.shape.binaryPath.removeDefault(),
     codexHome: settingsSchema.shape.codexHome.removeDefault(),
     defaultWorkspace: settingsSchema.shape.defaultWorkspace.removeDefault(),
@@ -28,6 +30,7 @@ export const settingsPatchSchema = z
   .partial();
 const schema = z.object({
   settings: settingsSchema.default({
+    autoUpdate: true,
     binaryPath: '',
     codexHome: '',
     defaultWorkspace: '',

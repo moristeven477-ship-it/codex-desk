@@ -23,6 +23,7 @@ test('independent preference edits and thread selection preserve language and CL
     const reloaded = new DeskService(root);
     await reloaded.init();
     assert.deepEqual(reloaded.store.state.settings, {
+      autoUpdate: true,
       locale: 'en',
       theme: 'light',
       fontSize: 18.37,

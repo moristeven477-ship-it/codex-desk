@@ -403,6 +403,10 @@ export function useDesk() {
       if (event.kind === 'resolved') setApprovals((old) => old.filter((r) => r.id !== event.id));
       if (event.kind === 'notice' && event.message) setError(event.message);
       if (event.kind !== 'notification') return;
+      if (event.method === 'desk/reconnected') {
+        void initialize();
+        return;
+      }
       const p = event.params ?? {};
       const id = p.threadId as string;
       if (id) {

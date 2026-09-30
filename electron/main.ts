@@ -9,6 +9,7 @@ import {
   Menu,
   Notification,
   Tray,
+  powerMonitor,
 } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -20,10 +21,16 @@ import { CompletionTracker } from '../src/shared/completion';
 import { BackgroundTerminal } from './background-terminal';
 import { RemoteGateway } from './remote';
 import { TailscaleSetup, createTailscaleDriver } from './tailscale';
+import { AppUpdater, findAppImage } from './app-update';
+import { APP_VERSION } from '../src/shared/version';
 
 let window: BrowserWindow | null = null;
 let service: DeskService;
 let remote: RemoteGateway;
+let updater: AppUpdater | undefined;
+let maintenanceTimer: NodeJS.Timeout | undefined;
+let lastUpdateCheck = 0;
+let maintaining = false;
 const phoneSetup = new TailscaleSetup(createTailscaleDriver(process.env.CODEX_DESK_TAILSCALE_HOME));
 let tray: Tray | undefined;
 let quitting = false,
@@ -73,6 +80,53 @@ else {
       service = new DeskService(app.getPath('userData'));
       const backgroundTerminal = new BackgroundTerminal(path.join(app.getPath('userData'), 'terminals'));
       await service.init();
+      updater = new AppUpdater({
+        currentVersion: APP_VERSION,
+        appImage: app.isPackaged ? await findAppImage() : undefined,
+        idle: async () => {
+          if (
+            quitting ||
+            service.store.state.settings.autoUpdate === false ||
+            powerMonitor.getSystemIdleTime() < 60 ||
+            service.runningCount
+          )
+            return false;
+          // Text drafts are persisted, but unsent image selections live in the
+          // renderer. Leave those intact until the user sends or removes them.
+          if (window && !window.isDestroyed()) {
+            const pendingImages = await window.webContents
+              .executeJavaScript('Boolean(document.querySelector(".image-attachments"))')
+              .catch(() => true);
+            if (pendingImages) return false;
+          }
+          return service.codex.isIdle();
+        },
+        relaunch: (image) => {
+          process.env.APPIMAGE_EXTRACT_AND_RUN = '1';
+          app.relaunch({ execPath: image, args: [] });
+          app.quit();
+        },
+      });
+      maintenanceTimer = setInterval(() => {
+        if (maintaining || quitting || service.store.state.settings.autoUpdate === false) return;
+        maintaining = true;
+        void (async () => {
+          await service.maintain();
+          if (Date.now() - lastUpdateCheck >= 6 * 60 * 60_000) {
+            lastUpdateCheck = Date.now();
+            await updater?.check();
+          }
+          await updater?.apply();
+        })()
+          .catch((error) => {
+            // A transient update failure must not disconnect a working session.
+            console.warn('Codex Desk update check:', String(error));
+          })
+          .finally(() => {
+            maintaining = false;
+          });
+      }, 60_000);
+      maintenanceTimer.unref();
       const remotePort =
         process.env.CODEX_DESK_REMOTE_PORT === undefined ? 43125 : Number(process.env.CODEX_DESK_REMOTE_PORT);
       if (!Number.isInteger(remotePort) || remotePort < 0 || remotePort > 65535)
@@ -176,6 +230,11 @@ else {
         trusted(event);
         if (typeof method !== 'string') throw new Error('Invalid operation.');
         try {
+          if (method === 'updates.status') return { ok: true, value: updater!.state };
+          if (method === 'updates.check') {
+            lastUpdateCheck = Date.now();
+            return { ok: true, value: await updater!.check() };
+          }
           if (method.startsWith('remote.')) {
             const args = params as Record<string, unknown> | undefined;
             if (method === 'remote.status')
@@ -326,6 +385,8 @@ else {
     if (!service || quitComplete) return;
     event.preventDefault();
     void (async () => {
+      clearInterval(maintenanceTimer);
+      await updater?.dispose();
       await phoneSetup.cancel();
       await remote?.stop(false);
       await service.codex.stop();

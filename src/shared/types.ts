@@ -22,6 +22,7 @@ export interface Project {
   createdAt: number;
 }
 export interface Settings {
+  autoUpdate?: boolean;
   binaryPath: string;
   codexHome: string;
   defaultWorkspace: string;
@@ -38,6 +39,8 @@ export interface AppState {
 export interface Connection {
   phase: 'stopped' | 'starting' | 'ready' | 'error';
   version?: string;
+  installedVersion?: string;
+  updatePending?: 'busy' | 'external';
   binary?: string;
   codexHome?: string;
   error?: string;

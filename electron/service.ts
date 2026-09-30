@@ -59,6 +59,7 @@ export class DeskService extends EventEmitter {
   private activeTurns = new Map<string, string>();
   private imagePaths = new Set<string>();
   private pristine = new Set<string>();
+  private maintenance?: Promise<void>;
 
   constructor(directory: string, codex = new CodexProcess()) {
     super();
@@ -109,6 +110,7 @@ export class DeskService extends EventEmitter {
     this.models = [];
     this.account = null;
     await this.codex.start(this.store.state.settings);
+    if (this.store.state.settings.autoUpdate !== false) await this.codex.refreshRuntime();
     const results = await Promise.allSettled([
       this.codex.request<{ data: Model[] }>('model/list', { limit: 100 }),
       this.codex.request<{ account: Bootstrap['account'] }>('account/read', { refreshToken: false }),
@@ -118,6 +120,19 @@ export class DeskService extends EventEmitter {
     for (const result of results)
       if (result.status === 'rejected')
         this.emit('event', { kind: 'notice', message: String(result.reason) });
+  }
+  maintain(): Promise<void> {
+    if (this.maintenance) return this.maintenance;
+    this.maintenance = (async () => {
+      if (this.store.state.settings.autoUpdate === false || this.runningCount) return;
+      if (await this.codex.refreshRuntime()) {
+        await this.connect();
+        this.emit('event', { kind: 'notification', method: 'desk/reconnected', params: {} });
+      }
+    })().finally(() => {
+      this.maintenance = undefined;
+    });
+    return this.maintenance;
   }
   private project(id: string) {
     const project = this.store.state.projects.find((p) => p.id === id);
@@ -324,6 +339,7 @@ export class DeskService extends EventEmitter {
     }
   }
   async handle(method: string, raw: unknown = {}): Promise<unknown> {
+    if (method !== 'bootstrap') await this.maintenance;
     const params = z.record(z.string(), z.unknown()).parse(raw);
     switch (method) {
       case 'bootstrap':
