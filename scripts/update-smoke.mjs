@@ -12,7 +12,7 @@ import { sharedFixture } from '../tests/fixtures/shared-server.mjs';
 const root = await mkdtemp(path.join(tmpdir(), 'desk-native-update-'));
 const data = path.join(root, 'data');
 await mkdir(data);
-const source = path.resolve(process.argv[2] || 'release/codex-desk-0.7.0-x86_64.AppImage');
+const source = path.resolve(process.argv[2] || 'release/codex-desk-0.7.1-x86_64.AppImage');
 const image = path.join(root, 'Desk.AppImage');
 await copyFile(source, image);
 await chmod(image, 0o755);

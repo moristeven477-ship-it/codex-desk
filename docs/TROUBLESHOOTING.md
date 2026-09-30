@@ -45,6 +45,10 @@ Starting with 0.7.0, Desk displays the **running backend version**, separately f
 
 从 0.7.0 起，设置显示**实际后台版本**；若与已安装 CLI 不同，会分别显示。开启自动更新后，连接时和每分钟检查一次。发现 CLI 新版后，等待所有共享会话及目标空闲，再更新 Desk 创建的后台，并恢复模型、推理、速度和权限设置。有任务运行、无法确认任务状态或后台由其他程序管理时，不会自动终止后台。CLI 软件包仍通过原安装方式升级。
 
+Version 0.7.1 also recognizes newer CLI listeners whose control socket is a symlink into a private runtime directory. It validates the link, target socket, directory ownership and process identity before managing that listener. After a server exits, a stale link can be removed safely on reconnect.
+
+0.7.1 同时支持新版 CLI 指向私有运行目录的 socket 符号链接。管理后台前会核对链接、目标 socket、目录归属及进程身份；原进程退出后，重连时可清理失效链接。
+
 ## Automatic Desk updates / Desk 自动更新
 
 **Settings → General → Automatic updates** is enabled by default. Writable, user-owned AppImages check this project's stable GitHub releases within a minute of launch and every six hours. Desk verifies the release asset's SHA-256 and length before installation. It waits until Codex has no active shared tasks or goals, the computer has had no input for at least 60 seconds, and the desktop composer has no unsent image attachments, then installs and restarts automatically. **Check for updates** runs the download check immediately. Turning the setting off also disables automatic backend replacement.

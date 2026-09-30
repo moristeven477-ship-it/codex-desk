@@ -67,7 +67,7 @@ If Codex already works in your terminal, keep that installation. Codex Desk disc
 Download the `.deb` from [Releases](https://github.com/moristeven477-ship-it/codex-desk/releases/latest), then run:
 
 ```bash
-sudo apt install ./codex-desk-0.7.0-amd64.deb
+sudo apt install ./codex-desk-0.7.1-amd64.deb
 ```
 
 Launch **Codex Desk** from Ubuntu's application menu, or run `codex-desk`.
@@ -77,14 +77,14 @@ The package includes the Electron runtime; Node.js is needed separately only for
 ### Portable AppImage
 
 ```bash
-chmod +x codex-desk-0.7.0-x86_64.AppImage
-./codex-desk-0.7.0-x86_64.AppImage
+chmod +x codex-desk-0.7.1-x86_64.AppImage
+./codex-desk-0.7.1-x86_64.AppImage
 ```
 
 If FUSE is unavailable, run without mounting the AppImage:
 
 ```bash
-APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.7.0-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./codex-desk-0.7.1-x86_64.AppImage
 ```
 
 The `.deb` is recommended on Ubuntu 24.04: its installer includes Electron's Ubuntu AppArmor integration. Do not disable Chromium's sandbox to work around an installation problem. See [Troubleshooting](docs/TROUBLESHOOTING.md).

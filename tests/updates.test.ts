@@ -1,7 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { chmod, mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import {
+  chmod,
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  stat,
+  symlink,
+  unlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { AppUpdater, latestReleaseURL, releaseRepository, selectRelease } from '../electron/app-update';
@@ -311,6 +323,66 @@ test('startup upgrades an idle Desk backend; a stale PID identity is never termi
     await f.service.connect();
     assert.equal(f.service.codex.connection.version, 'codex-cli 1.1.0');
   } finally {
+    await f.close();
+  }
+});
+
+test('runtime upgrades recognize CLI socket symlinks in private directories', async () => {
+  const f = await runtimeFixture();
+  const target = path.join(f.root, 'native.sock');
+  try {
+    const original = await ownedSharedListener(f.socket);
+    await rename(f.socket, target);
+    await symlink(target, f.socket);
+    assert.deepEqual(await ownedSharedListener(f.socket), original);
+    await f.upgrade();
+    await f.service.maintain();
+    assert.equal(f.service.codex.connection.version, 'codex-cli 1.1.0');
+    assert.notEqual((await ownedSharedListener(f.socket))?.pid, original?.pid);
+  } finally {
+    await f.close();
+  }
+});
+
+test('a stale CLI socket symlink is cleaned up when its recorded process has exited', async () => {
+  const f = await runtimeFixture();
+  try {
+    await f.service.codex.stop();
+    await stopOwnedSharedListener(f.socket, (await ownedSharedListener(f.socket))!);
+    await symlink(path.join(f.root, 'removed-native.sock'), f.socket);
+    await startSharedListener(
+      path.resolve('tests/fixtures/update-codex.mjs'),
+      { ...process.env, CODEX_HOME: f.home },
+      f.socket,
+    );
+    assert.ok(await ownedSharedListener(f.socket));
+    await f.service.connect();
+    assert.equal(f.service.codex.connection.phase, 'ready');
+  } finally {
+    await f.close();
+  }
+});
+
+test('socket ownership rejects symlinks to files and writable shared directories', async () => {
+  const f = await runtimeFixture();
+  const original = await ownedSharedListener(f.socket);
+  const real = path.join(f.root, 'native.sock');
+  try {
+    await rename(f.socket, real);
+    const file = path.join(f.root, 'ordinary-file');
+    await writeFile(file, 'not a socket');
+    await symlink(file, f.socket);
+    assert.equal(await ownedSharedListener(f.socket), undefined);
+    await unlink(f.socket);
+    await symlink(real, f.socket);
+    await chmod(f.root, 0o777);
+    assert.equal(await ownedSharedListener(f.socket), undefined);
+    await chmod(f.root, 0o700);
+    assert.deepEqual(await ownedSharedListener(f.socket), original);
+  } finally {
+    await chmod(f.root, 0o700);
+    await unlink(f.socket).catch(() => {});
+    await rename(real, f.socket);
     await f.close();
   }
 });

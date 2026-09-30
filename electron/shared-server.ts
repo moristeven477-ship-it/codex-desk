@@ -1,10 +1,28 @@
 import { spawn } from 'node:child_process';
 import { createConnection } from 'node:net';
-import { mkdir, open, lstat, unlink, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, open, lstat, unlink, readFile, writeFile, readlink } from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 type ProcessIdentity = { pid: number; startTime: string };
+
+async function ownedSocketPath(socket: string, allowStaleTarget = false): Promise<boolean> {
+  const endpoint = await lstat(socket);
+  const uid = process.getuid?.();
+  if (endpoint.uid !== uid) return false;
+  if (endpoint.isSocket()) return true;
+  if (!endpoint.isSymbolicLink()) return false;
+  // Recent CLI versions publish a symlink into their private runtime directory.
+  // Validate both ends; never follow a link to an arbitrary file or shared directory.
+  const target = path.resolve(path.dirname(socket), await readlink(socket));
+  const directory = await lstat(path.dirname(target));
+  if (!directory.isDirectory() || directory.uid !== uid || (directory.mode & 0o022) !== 0) return false;
+  const resolved = await lstat(target).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  return resolved ? resolved.isSocket() && resolved.uid === uid : allowStaleTarget;
+}
 
 async function processIdentity(pid: number): Promise<ProcessIdentity | undefined> {
   if (!Number.isSafeInteger(pid) || pid < 2) return;
@@ -26,14 +44,7 @@ export async function ownedSharedListener(socket: string): Promise<ProcessIdenti
   try {
     const file = path.join(path.dirname(socket), 'codex-desk-server.json');
     const metadata = await lstat(file);
-    const endpoint = await lstat(socket);
-    if (
-      !metadata.isFile() ||
-      metadata.uid !== process.getuid?.() ||
-      !endpoint.isSocket() ||
-      endpoint.uid !== process.getuid?.()
-    )
-      return;
+    if (!metadata.isFile() || metadata.uid !== process.getuid?.() || !(await ownedSocketPath(socket))) return;
     const saved = JSON.parse(await readFile(file, 'utf8')) as Partial<ProcessIdentity>;
     const live = await processIdentity(saved.pid!);
     if (!live || (saved.startTime && saved.startTime !== live.startTime)) return;
@@ -85,7 +96,7 @@ export async function startSharedListener(binary: string, env: NodeJS.ProcessEnv
   const pidFile = path.join(directory, 'codex-desk-server.json');
   const metadata = await lstat(socket).catch(() => null);
   if (metadata) {
-    if (!metadata.isSocket() || metadata.uid !== process.getuid?.())
+    if (!(await ownedSocketPath(socket, true)))
       throw new Error('The Codex control socket has an unexpected owner or type.');
     const previous = JSON.parse(await readFile(pidFile, 'utf8').catch(() => '{}')) as { pid?: number };
     let alive = false;
